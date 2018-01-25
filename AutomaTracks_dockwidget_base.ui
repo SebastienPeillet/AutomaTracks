@@ -30,7 +30,7 @@
        <attribute name="title">
         <string>Main_Onglet</string>
        </attribute>
-       <widget class="QComboBox" name="comboBox">
+       <widget class="QComboBox" name="PointInput">
         <property name="geometry">
          <rect>
           <x>110</x>
@@ -40,7 +40,7 @@
          </rect>
         </property>
        </widget>
-       <widget class="QPushButton" name="pushButton">
+       <widget class="QPushButton" name="PointActButton">
         <property name="geometry">
          <rect>
           <x>230</x>
@@ -53,7 +53,7 @@
          <string>↺</string>
         </property>
        </widget>
-       <widget class="QLabel" name="label">
+       <widget class="QLabel" name="PointLabel">
         <property name="geometry">
          <rect>
           <x>10</x>
@@ -66,7 +66,7 @@
          <string>Path point layer :</string>
         </property>
        </widget>
-       <widget class="QLabel" name="label_2">
+       <widget class="QLabel" name="DEMLabel">
         <property name="geometry">
          <rect>
           <x>10</x>
@@ -79,7 +79,7 @@
          <string>DEM layer :</string>
         </property>
        </widget>
-       <widget class="QPushButton" name="pushButton_2">
+       <widget class="QPushButton" name="DEMActButton">
         <property name="geometry">
          <rect>
           <x>230</x>
@@ -92,7 +92,7 @@
          <string>↺</string>
         </property>
        </widget>
-       <widget class="QComboBox" name="comboBox_2">
+       <widget class="QComboBox" name="DEMInput">
         <property name="geometry">
          <rect>
           <x>110</x>
@@ -102,7 +102,7 @@
          </rect>
         </property>
        </widget>
-       <widget class="QLabel" name="label_3">
+       <widget class="QLabel" name="EdgesLabel">
         <property name="geometry">
          <rect>
           <x>10</x>
@@ -115,7 +115,7 @@
          <string>Edges number :</string>
         </property>
        </widget>
-       <widget class="QLabel" name="label_4">
+       <widget class="QLabel" name="DirectionLabel">
         <property name="geometry">
          <rect>
           <x>10</x>
@@ -128,7 +128,7 @@
          <string>Direction constraint method :</string>
         </property>
        </widget>
-       <widget class="QLabel" name="label_5">
+       <widget class="QLabel" name="MaxLenLabel">
         <property name="geometry">
          <rect>
           <x>10</x>
@@ -141,7 +141,7 @@
          <string>Maximum length slope (%) :</string>
         </property>
        </widget>
-       <widget class="QSpinBox" name="spinBox">
+       <widget class="QSpinBox" name="MaxLengthSpinBox">
         <property name="geometry">
          <rect>
           <x>180</x>
@@ -154,7 +154,7 @@
          <number>10</number>
         </property>
        </widget>
-       <widget class="QPushButton" name="pushButton_3">
+       <widget class="QPushButton" name="LaunchButton">
         <property name="geometry">
          <rect>
           <x>180</x>
@@ -167,7 +167,7 @@
          <string>Launch</string>
         </property>
        </widget>
-       <widget class="QWidget" name="">
+       <widget class="QWidget" name="layoutWidget">
         <property name="geometry">
          <rect>
           <x>110</x>
@@ -176,12 +176,15 @@
           <height>19</height>
          </rect>
         </property>
-        <layout class="QHBoxLayout" name="horizontalLayout">
+        <layout class="QHBoxLayout" name="EdgesNumGroup_2">
          <item>
           <widget class="QRadioButton" name="radioButton">
            <property name="text">
             <string>8</string>
            </property>
+           <attribute name="buttonGroup">
+            <string notr="true">EdgesNumGroup</string>
+           </attribute>
           </widget>
          </item>
          <item>
@@ -189,6 +192,9 @@
            <property name="text">
             <string>24</string>
            </property>
+           <attribute name="buttonGroup">
+            <string notr="true">EdgesNumGroup</string>
+           </attribute>
           </widget>
          </item>
          <item>
@@ -196,6 +202,9 @@
            <property name="text">
             <string>40</string>
            </property>
+           <attribute name="buttonGroup">
+            <string notr="true">EdgesNumGroup</string>
+           </attribute>
           </widget>
          </item>
          <item>
@@ -203,11 +212,14 @@
            <property name="text">
             <string>48</string>
            </property>
+           <attribute name="buttonGroup">
+            <string notr="true">EdgesNumGroup</string>
+           </attribute>
           </widget>
          </item>
         </layout>
        </widget>
-       <widget class="QWidget" name="">
+       <widget class="QWidget" name="layoutWidget">
         <property name="geometry">
          <rect>
           <x>80</x>
@@ -222,6 +234,9 @@
            <property name="text">
             <string>degree</string>
            </property>
+           <attribute name="buttonGroup">
+            <string notr="true">DirectionGroup</string>
+           </attribute>
           </widget>
          </item>
          <item>
@@ -229,6 +244,9 @@
            <property name="text">
             <string>radius of curvature</string>
            </property>
+           <attribute name="buttonGroup">
+            <string notr="true">DirectionGroup</string>
+           </attribute>
           </widget>
          </item>
         </layout>
@@ -246,4 +264,8 @@
  </widget>
  <resources/>
  <connections/>
+ <buttongroups>
+  <buttongroup name="EdgesNumGroup"/>
+  <buttongroup name="DirectionGroup"/>
+ </buttongroups>
 </ui>

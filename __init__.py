@@ -31,5 +31,5 @@ def classFactory(iface):  # pylint: disable=invalid-name
     :type iface: QgsInterface
     """
     #
-    from .AutoTrack import AutomaTracks
+    from .AutomaTracks import AutomaTracks
     return AutomaTracks(iface)

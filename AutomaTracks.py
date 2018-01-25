@@ -20,13 +20,18 @@
  *                                                                         *
  ***************************************************************************/
 """
-from PyQt4.QtCore import QSettings, QTranslator, qVersion, QCoreApplication, Qt
+from PyQt4.QtCore import QSettings, QTranslator, \
+    qVersion, QCoreApplication, Qt, QFileInfo
 from PyQt4.QtGui import QAction, QIcon
+
+from qgis.core import QgsRasterLayer, QgsGeometry
+import math
+
 # Initialize Qt resources from file resources.py
 import resources
 
 # Import the code for the DockWidget
-from AutoTrack_dockwidget import AutomaTracksDockWidget
+from AutomaTracks_dockwidget import AutomaTracksDockWidget
 import os.path
 
 
@@ -173,6 +178,12 @@ class AutomaTracks:
             text=self.tr(u'AutomaTracks'),
             callback=self.run,
             parent=self.iface.mainWindow())
+        self.dockwidget = AutomaTracksDockWidget()
+        self.listVectLayer()
+        self.listRastLayer()
+        self.dockwidget.DEMActButton.clicked.connect(self.listRastLayer)
+        self.dockwidget.PointActButton.clicked.connect(self.listVectLayer)
+        self.dockwidget.LaunchButton.clicked.connect(self.launchAutomaTracks)
 
     #--------------------------------------------------------------------------
 
@@ -207,7 +218,72 @@ class AutomaTracks:
         del self.toolbar
 
     #--------------------------------------------------------------------------
+    # AutomaTracks function
+    def listRastLayer(self):
+        """List raster inputs for the DEM selection"""
 
+        # clear list and index
+        self.dockwidget.DEMInput.clear()
+        self.dockwidget.DEMInput.clearEditText()
+        self.rast_list = []
+        layers = self.iface.legendInterface().layers()
+        layer_list = []
+        index = 0
+        for layer in layers:
+            if layer.type() == 1:
+                layer_list.append(layer.name())
+                self.rast_list.append(index)
+            index += 1
+        self.dockwidget.DEMInput.addItems(layer_list)
+
+    def listVectLayer(self):
+        """List line layer for the track selection"""
+
+        # clear list and index
+        self.dockwidget.PointInput.clear()
+        self.dockwidget.PointInput.clearEditText()
+        self.vect_list = []
+        layers = self.iface.legendInterface().layers()
+        layer_list = []
+        index = 0
+        for layer in layers:
+            if layer.type() == 0:
+                if layer.geometryType() == 0:
+                    layer_list.append(layer.name())
+                    self.vect_list.append(index)
+            index += 1
+        self.dockwidget.PointInput.addItems(layer_list)
+
+    def launchAutomaTracks(self):
+        """Process path between pairs of point"""
+        print "launch"
+        # 1 Get the vector layer
+        layers = self.iface.legendInterface().layers()
+        selected_lignes = self.dockwidget.PointInput.currentIndex()
+        pointsLayer = layers[self.vect_list[selected_lignes]]
+        # 2 Get the raster layer
+        selected_lignes = self.dockwidget.DEMInput.currentIndex()
+        DEMLayer = layers[self.rast_list[selected_lignes]]
+
+        # Load raster layer
+        fileName = DEMLayer.publicSource()
+        fileInfo = QFileInfo(fileName)
+        baseName = fileInfo.baseName()
+        # keep raster path
+        pathRaster = os.path.dirname(fileName)
+        dem = QgsRasterLayer(fileName, baseName)
+        if not dem.isValid():
+            print "Layer failed to load!"
+
+        try:
+            edges = self.dockwidget.EdgesNumGroup.checkedButton().text()
+            direction = self.dockwidget.DirectionGroup.checkedButton().text()
+            maxLength = self.dockwidget.MaxLengthSpinBox.value()
+            print edges, direction, maxLength
+        except AttributeError as e:
+            print "%s : No edges number or direction option" %e
+
+    #---------------------------------------------------------------------------
     def run(self):
         """Run method that loads and starts the plugin"""
 
