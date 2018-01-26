@@ -16,7 +16,8 @@
 import os
 import sys
 from qgis.core import QgsVectorLayer, QgsVectorFileWriter,QgsVectorDataProvider, QgsField, \
-                        QgsExpression, QgsFeatureRequest
+                        QgsExpression, QgsFeatureRequest, QgsRasterPipe, QgsRasterFileWriter, \
+                        QgsRectangle, QgsRasterLayer
 from PyQt4.QtCore import QVariant
 from osgeo import gdal
 from osgeo import ogr
@@ -1174,21 +1175,76 @@ def standard_algo():
     print 'processing Time :'
     time.show()
 
-def advanced_algo(point_layer,L_ind,P_ind,DEM_layer,tracks_layer,nb_edges,method,threshold,max_slope):
+def getExtent(point, next_point, x_res, y_res):
+
+    point_geom = point.geometry().asPoint()
+    npoint_geom = next_point.geometry().asPoint()
+
+    x1,y1 = point_geom
+    x2,y2 = npoint_geom
+
+    dist = math.sqrt(point_geom.sqrDist(npoint_geom))
+
+    xmax = max(x1,x2) + x_res + dist/4
+    xmin = min(x1,x2) - x_res - dist/4
+    ymax = max(y1,y2) + y_res + dist/4
+    ymin = min(y1,y2) - y_res - dist/4
+    extent = [xmin, ymin, xmax, ymax]
+    return extent
+
+def getClip(DEM_layer, outpath, extent, x_res, y_res):
+    crs = DEM_layer.crs()
+    pipe = QgsRasterPipe()
+    pipe.set(DEM_layer.dataProvider().clone())
+    pipe.set(DEM_layer.renderer().clone())
+    
+    file_writer = QgsRasterFileWriter('%s\\tmp.tiff' % os.path.dirname(outpath))
+
+    width = (extent[2] - extent[0]) / x_res
+    height = (extent[3] - extent[1]) / y_res
+    rect = QgsRectangle(extent[0],extent[1],extent[2],extent[3])
+    file_writer.writeRaster(pipe, width, height, rect, crs)
+
+    dem_clip = QgsRasterLayer('%s\\tmp.tiff' % os.path.dirname(outpath),'tmp')
+    return dem_clip
+
+
+def advanced_algo(point_layer,DEM_layer,tracks_layer,outpath,nb_edges,method,threshold,max_slope):
+    #resolution raster
+    x_res = DEM_layer.rasterUnitsPerPixelX()
+    y_res = DEM_layer.rasterUnitsPerPixelY()
+
+    #list line
     lines_list=[]
     for point in point_layer.getFeatures() :
         line_id = point.attribute('L_id')
         if line_id not in lines_list :
             lines_list.append(line_id)
 
+    #loop the points for each line
     for line in lines_list :
-        print 'line : %s' %line
         expr = QgsExpression('L_id = %s'%line)
         req = QgsFeatureRequest(expr)
         line_points = point_layer.getFeatures(req)
         for point in line_points :
-            point_id = point.attribute('P_id')
-            print 'point : %s' %point_id
+            nature = point.attribute('nature')
+            if nature != 'end' :
+                next_point = None
+                point_id = point.attribute('P_id')
+                next_id = int(point_id) + 1
+                expre = QgsExpression('L_id = %s AND P_id= %s'%(line, str(next_id)))
+                reque = QgsFeatureRequest(expre)
+                next_point_it = point_layer.getFeatures(reque)
+                try :
+                    next_point = next(next_point_it)
+                except StopIteration:
+                    pass
+                if next_point != None :
+                    extent = getExtent(point, next_point, x_res, y_res)
+                    dem_clip = getClip(DEM_layer, outpath, extent, x_res, y_res)
+
+
+
 
 
 
@@ -1248,7 +1304,7 @@ def pointChecked(point_layer) :
     else :
         point_format = True
 
-    return point_format, L_index, P_index
+    return point_format
 
 def outputFormat(crs):
     tracks_layer = QgsVectorLayer('Linestring?crs=' + crs,'Tracks','memory')
@@ -1285,10 +1341,11 @@ def launchAutomatracks(point_layer, DEM_layer, outpath, nb_edges,method,threshol
         print 'processing Time :'
         time.show()
 
-        point_format, L_ind, P_ind = pointChecked(point_layer)
+        point_format = pointChecked(point_layer)
 
         if point_format == True :
-            advanced_algo(point_layer,L_ind,P_ind,DEM_layer,tracks_layer,nb_edges,method,threshold,max_slope)
+            print 'yop'
+            advanced_algo(point_layer,DEM_layer,tracks_layer,outpath,nb_edges,method,threshold,max_slope)
 
         error = QgsVectorFileWriter.writeAsVectorFormat(tracks_layer, outpath, "utf-8", None, "ESRI Shapefile") 
         if error == QgsVectorFileWriter.NoError:

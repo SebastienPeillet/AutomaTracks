@@ -287,9 +287,10 @@ class AutomaTracks:
                 method = 'r'
             threshold = self.dockwidget.MaxDirSpinBox.value()
             max_slope = self.dockwidget.MaxSlopeSpinBox.value()
-            Utils.launchAutomatracks(pointsLayer, DEMLayer, outpath, edges,method,threshold,max_slope)
         except AttributeError as e:
             print "%s : No edges number or direction option" %e
+        Utils.launchAutomatracks(pointsLayer, DEMLayer, outpath, edges,method,threshold,max_slope)
+
 
     #---------------------------------------------------------------------------
     def run(self):
