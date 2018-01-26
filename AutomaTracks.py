@@ -265,6 +265,9 @@ class AutomaTracks:
         selected_lignes = self.dockwidget.DEMInput.currentIndex()
         DEMLayer = layers[self.rast_list[selected_lignes]]
 
+        #3 Get the output path
+        outpath = self.dockwidget.outPathEdit.text()
+
         # Load raster layer
         fileName = DEMLayer.publicSource()
         fileInfo = QFileInfo(fileName)
@@ -279,7 +282,7 @@ class AutomaTracks:
             edges = self.dockwidget.EdgesNumGroup.checkedButton().text()
             direction = self.dockwidget.DirectionGroup.checkedButton().text()
             maxLength = self.dockwidget.MaxLengthSpinBox.value()
-            print edges, direction, maxLength
+            print outpath, edges, direction, maxLength
         except AttributeError as e:
             print "%s : No edges number or direction option" %e
 
