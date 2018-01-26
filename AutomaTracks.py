@@ -26,6 +26,7 @@ from PyQt4.QtGui import QAction, QIcon
 
 from qgis.core import QgsRasterLayer, QgsGeometry
 import math
+import Utils
 
 # Initialize Qt resources from file resources.py
 import resources
@@ -280,9 +281,14 @@ class AutomaTracks:
 
         try:
             edges = self.dockwidget.EdgesNumGroup.checkedButton().text()
-            direction = self.dockwidget.DirectionGroup.checkedButton().text()
-            maxLength = self.dockwidget.MaxLengthSpinBox.value()
-            print outpath, edges, direction, maxLength
+            method = self.dockwidget.DirectionGroup.checkedButton().text()
+            if method == 'degree' :
+                method = 'a'
+            elif method == 'radius of curvature' :
+                method = 'r'
+            threshold = self.dockwidget.MaxDirSpinBox.value()
+            max_slope = self.dockwidget.MaxSlopeSpinBox.value()
+            Utils.launchAutomatracks(pointsLayer, DEMLayer, outpath, edges,method,threshold,max_slope)
         except AttributeError as e:
             print "%s : No edges number or direction option" %e
 
