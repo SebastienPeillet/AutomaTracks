@@ -16,6 +16,7 @@
 """
 import os
 import sys
+from qgis.core import QgsVectorLayer, QgsVectorFileWriter
 from osgeo import gdal
 from osgeo import ogr
 from osgeo import osr
@@ -1261,11 +1262,27 @@ def advanced_algo():
     print 'processing Time :'
     time.show()
 
-def launchAutomatracks(point_path, DEM, outpath, nb_edges,method,threshold,max_slope) :
-    print point_path, DEM, outpath, nb_edges,method,threshold,max_slope
-    # print 'Standard or Advanced algo ? (s/a)'
-    # algo = raw_input()
-    # if algo == 'a' :
-    #     advanced_algo()
-    # else :
-    #     standard_algo()
+def launchAutomatracks(point_layer, DEM_layer, outpath, nb_edges,method,threshold,max_slope) :
+    time=Timer()
+    time.start()
+
+    if os.path.exists(os.path.dirname(outpath)) ==False :
+        try :
+            os.mkdir(os.path.dirname(outpath))
+        except :
+            print 'no write access'
+
+    if os.access(os.path.dirname(outpath), os.W_OK) == True :
+        crs = point_layer.crs().toWkt()
+        tracks_layer= QgsVectorLayer('Linestring?crs=' + crs,'Tracks','memory')
+
+        time.stop()
+        print 'processing Time :'
+        time.show()
+
+        error = QgsVectorFileWriter.writeAsVectorFormat(tracks_layer, outpath, "utf-8", None, "ESRI Shapefile") 
+        if error == QgsVectorFileWriter.NoError:
+            print "success!"
+
+    else :
+        print 'no write access'

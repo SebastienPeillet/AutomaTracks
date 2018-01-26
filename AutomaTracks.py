@@ -257,7 +257,6 @@ class AutomaTracks:
 
     def launchAutomaTracks(self):
         """Process path between pairs of point"""
-        print "launch"
         # 1 Get the vector layer
         layers = self.iface.legendInterface().layers()
         selected_lignes = self.dockwidget.PointInput.currentIndex()
