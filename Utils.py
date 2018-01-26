@@ -15,7 +15,8 @@
 """
 import os
 import sys
-from qgis.core import QgsVectorLayer, QgsVectorFileWriter,QgsVectorDataProvider, QgsField
+from qgis.core import QgsVectorLayer, QgsVectorFileWriter,QgsVectorDataProvider, QgsField, \
+                        QgsExpression, QgsFeatureRequest
 from PyQt4.QtCore import QVariant
 from osgeo import gdal
 from osgeo import ogr
@@ -1082,7 +1083,7 @@ def get_adv_lcp(beg_list,path,end_id, method,threshold) :
     return leastCostPath
     
 def standard_algo():
-        #Main function
+    #Main function
     print 'Import raster...'
     in_array, scr, proj, res = imp_raster()
     print 'Import raster done'
@@ -1173,94 +1174,68 @@ def standard_algo():
     print 'processing Time :'
     time.show()
 
-def advanced_algo():
-    #Main function
-    print 'Import raster...'
-    in_array, scr, proj, res = imp_raster()
-    print 'Import raster done'
-    
-    
-    print 'Import vector ...'
-    point_list, scr_shp = imp_init_point(scr)
-    print '%s feature(s)' % len(point_list)
-    print 'Import vector done'
+def advanced_algo(point_layer,L_ind,P_ind,DEM_layer,tracks_layer,nb_edges,method,threshold,max_slope):
+    lines_list=[]
+    for point in point_layer.getFeatures() :
+        line_id = point.attribute('L_id')
+        if line_id not in lines_list :
+            lines_list.append(line_id)
 
-    print 'Name vector output...'
-    print 'path :'
-    out_line=output_prep(scr_shp)
-    
-    print 'Edges model : (8/24/40/48)'
-    nb_edge = int(input())
-    if nb_edge not in [8,24,40,48] :
-       print "Wrong edges model, %s edges model does'nt exist" % str(nb_edge)
-    
-    print 'Method a/r (angle/radius) :'
-    method = raw_input()
-    if method == 'a' or method == 'angle' :
-        method = 'angle'
-        print "Angle max (%) :"
-        threshold = int(input())
-    elif method == 'r' or method == 'radius' :
-        method = 'radius'
-        print "Radius min (m) :"
-        threshold = int(input())
-    else :
-        print "Wrong method"
-        exit()
-    
-    print 'Along slope limit : (percent, ex : 10 for 10 %)'
-    max_slope= int(input())
-    
-    i=0
-    time=Timer()
-    time.start()
-    for beg_point in point_list :
-        x,y = beg_point
-        beg_id = "x"+str(x)+"y"+str(y)    
-        print 'Convert rast to graph...'
-        G = rast_to_adv_graph(in_array, res, nb_edge, max_slope, method, threshold)
-        print 'Convert rast to graph done'
+    for line in lines_list :
+        print 'line : %s' %line
+        expr = QgsExpression('L_id = %s'%line)
+        req = QgsFeatureRequest(expr)
+        line_points = point_layer.getFeatures(req)
+        for point in line_points :
+            point_id = point.attribute('P_id')
+            print 'point : %s' %point_id
 
-        print '%s nodes in the graph' % len(G.nodes)
-        sum_nodes=0
-        for node in G.nodes :
-            sum_nodes += len(G.edges[node])
-        print '%s edges in the graph' % sum_nodes
 
-        #Begin to search least_cost path for each beg point
-        print 'Searching the least cost path for %s' % beg_id
-        path, beg_list, end_id, visited = adv_dijkstra(G,beg_id,point_list)
-        print end_id
-        i+=1
-        print 'Searching the least cost path done'
+
+    # i=0
+    # for beg_point in point_list :
+    #     x,y = beg_point
+    #     beg_id = "x"+str(x)+"y"+str(y)    
+    #     print 'Convert rast to graph...'
+    #     G = rast_to_adv_graph(in_array, res, nb_edges, max_slope, method, threshold)
+    #     print 'Convert rast to graph done'
+
+    #     print '%s nodes in the graph' % len(G.nodes)
+    #     sum_nodes=0
+    #     for node in G.nodes :
+    #         sum_nodes += len(G.edges[node])
+    #     print '%s edges in the graph' % sum_nodes
+
+    #     #Begin to search least_cost path for each beg point
+    #     print 'Searching the least cost path for %s' % beg_id
+    #     path, beg_list, end_id, visited = adv_dijkstra(G,beg_id,point_list)
+    #     print end_id
+    #     i+=1
+    #     print 'Searching the least cost path done'
         
-        if end_id != None :
-            filename="path"+str(i)+".txt"
-            file = open(filename,"w")
-            file.write(str(path))
-            file.close()
+    #     if end_id != None :
+    #         filename="path"+str(i)+".txt"
+    #         file = open(filename,"w")
+    #         file.write(str(path))
+    #         file.close()
             
-            leastCostPath = get_adv_lcp(beg_list,path,end_id, method,threshold)
+    #         leastCostPath = get_adv_lcp(beg_list,path,end_id, method,threshold)
                 
-            filename="lcp"+str(i)+".txt"
-            file = open(filename,"w")
-            file.write(str(leastCostPath))
-            file.close()
+    #         filename="lcp"+str(i)+".txt"
+    #         file = open(filename,"w")
+    #         file.write(str(leastCostPath))
+    #         file.close()
             
-            filename="lcp"+str(i)+".txt"
-            file = open(filename,"w")
-            file.write(str(visited))
-            file.close()
+    #         filename="lcp"+str(i)+".txt"
+    #         file = open(filename,"w")
+    #         file.write(str(visited))
+    #         file.close()
             
-            coord_list = ids_to_coord(leastCostPath,scr)
-            end_pt = leastCostPath[0] 
-            w = visited[end_id]
-            create_ridge(out_line,coord_list,beg_id,end_pt,w)
-            print 'Create the least cost path as OGR LineString done'
-        
-    time.stop()
-    print 'processing Time :'
-    time.show()
+    #         coord_list = ids_to_coord(leastCostPath,scr)
+    #         end_pt = leastCostPath[0] 
+    #         w = visited[end_id]
+    #         create_ridge(out_line,coord_list,beg_id,end_pt,w)
+    #         print 'Create the least cost path as OGR LineString done'
 
 def pointChecked(point_layer) :
     pr = point_layer.dataProvider()
@@ -1312,6 +1287,8 @@ def launchAutomatracks(point_layer, DEM_layer, outpath, nb_edges,method,threshol
 
         point_format, L_ind, P_ind = pointChecked(point_layer)
 
+        if point_format == True :
+            advanced_algo(point_layer,L_ind,P_ind,DEM_layer,tracks_layer,nb_edges,method,threshold,max_slope)
 
         error = QgsVectorFileWriter.writeAsVectorFormat(tracks_layer, outpath, "utf-8", None, "ESRI Shapefile") 
         if error == QgsVectorFileWriter.NoError:
