@@ -2,21 +2,21 @@
 # -*- coding: utf-8 -*-
 """"
 /***************************************************************************
- least_cost.py
+ Utils.py
 
  Perform a least cost path with a raster conversion in graph
  
  Need : OsGeo library
                               -------------------
-        begin                : 2017-07-07
-        git sha              : 2017-07-07
+        begin                : 2018-01-26
         copyright            : (C) 2017 by Peillet Sebastien
         email                : peillet.seb@gmail.com
  ***************************************************************************/
 """
 import os
 import sys
-from qgis.core import QgsVectorLayer, QgsVectorFileWriter
+from qgis.core import QgsVectorLayer, QgsVectorFileWriter,QgsVectorDataProvider, QgsField
+from PyQt4.QtCore import QVariant
 from osgeo import gdal
 from osgeo import ogr
 from osgeo import osr
@@ -1262,6 +1262,36 @@ def advanced_algo():
     print 'processing Time :'
     time.show()
 
+def pointChecked(point_layer) :
+    pr = point_layer.dataProvider()
+
+    L_index = pr.fieldNameIndex('L_id')
+    P_index = pr.fieldNameIndex('P_id')
+
+    if L_index == -1 or P_index == -1 :
+        point_format = False
+    else :
+        point_format = True
+
+    return point_format, L_index, P_index
+
+def outputFormat(crs):
+    tracks_layer = QgsVectorLayer('Linestring?crs=' + crs,'Tracks','memory')
+    name_L_id = "L_id"
+    name_P1_id = "P1_id"
+    name_P2_id= "P2_id"
+    name_cost = "cost"
+    provider = tracks_layer.dataProvider()
+    caps = provider.capabilities()
+    if caps & QgsVectorDataProvider.AddAttributes:
+        res = provider.addAttributes( [ QgsField(name_L_id, QVariant.String) ,
+                                        QgsField(name_P1_id, QVariant.String),
+                                        QgsField(name_P2_id, QVariant.String),
+                                        QgsField(name_cost, QVariant.Double,"double", 5, 1) ] )
+        tracks_layer.updateFields()
+
+    return tracks_layer
+
 def launchAutomatracks(point_layer, DEM_layer, outpath, nb_edges,method,threshold,max_slope) :
     time=Timer()
     time.start()
@@ -1274,11 +1304,14 @@ def launchAutomatracks(point_layer, DEM_layer, outpath, nb_edges,method,threshol
 
     if os.access(os.path.dirname(outpath), os.W_OK) == True :
         crs = point_layer.crs().toWkt()
-        tracks_layer= QgsVectorLayer('Linestring?crs=' + crs,'Tracks','memory')
+        tracks_layer= outputFormat(crs)
 
         time.stop()
         print 'processing Time :'
         time.show()
+
+        point_format, L_ind, P_ind = pointChecked(point_layer)
+
 
         error = QgsVectorFileWriter.writeAsVectorFormat(tracks_layer, outpath, "utf-8", None, "ESRI Shapefile") 
         if error == QgsVectorFileWriter.NoError:
