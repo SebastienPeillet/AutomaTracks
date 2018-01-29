@@ -18,6 +18,7 @@ import sys
 from qgis.core import QgsVectorLayer, QgsVectorFileWriter,QgsVectorDataProvider, QgsField, \
                         QgsExpression, QgsFeatureRequest, QgsRasterPipe, QgsRasterFileWriter, \
                         QgsRectangle, QgsRasterLayer
+import processing
 from PyQt4.QtCore import QVariant
 from osgeo import gdal
 from osgeo import ogr
@@ -95,12 +96,9 @@ class AdvGraph ():
         self.slope[(beg,end)] = slope
         
     
-def imp_raster():
-    print 'ENTER input raster path'
-    iFile_name=raw_input()
-
+def imp_raster(dem_clip):
     # Open the input raster to retrieve values in an array
-    data = gdal.Open(iFile_name,1)
+    data = gdal.Open(dem_clip,1)
     proj = data.GetProjection()
     scr = data.GetGeoTransform()
     resolution = scr[1]
@@ -409,7 +407,7 @@ def rast_to_adv_graph(rastArray, res, nb_edge, max_slope, method, threshold) :
         
         for node2 in list_pos_edge :
             if node1[0] != node2 and node1[1][0][1] == nodes[node2][0][0] :
-                if method == 'angle' :
+                if method == 'a' :
                         x1,y1 = id_to_coord(node1[1][0][0])
                         x2,y2 = id_to_coord(node1[1][0][1])
                         x3,y3 = id_to_coord(nodes[node2][0][1])
@@ -428,7 +426,7 @@ def rast_to_adv_graph(rastArray, res, nb_edge, max_slope, method, threshold) :
                         if math.fabs(angle) <= threshold :
                             G.add_edge(node1[0] , node2)
                             
-                if method == 'radius' :
+                if method == 'r' :
                     x1,y1 = id_to_coord(node1[1][0][0])
                     x2,y2 = id_to_coord(node1[1][0][1])
                     x3,y3 = id_to_coord(nodes[node2][0][1])
@@ -694,16 +692,7 @@ def rast_to_graph(rastArray, res, nb_edge, max_slope) :
     
     return G
 
-def adv_dijkstra(graph, init, end_list) :
-    #change the end point coordinates to graph id
-    end_name=[]
-    for end_point in end_list :
-        print end_point
-        x,y=end_point
-        end_id = "x"+str(x)+"y"+str(y)
-        if end_id != init :
-            end_name.append(end_id)
-            
+def adv_dijkstra(graph, init, end_id) :            
     nodes = graph.nodes
     
     beg_list = []
@@ -723,11 +712,11 @@ def adv_dijkstra(graph, init, end_list) :
     
     min_node = [0,[[0,0]]]
     while nodes: 
-        if min_node[1][0][1] not in end_name:
+        if min_node[1][0][1] is not end_id:
             min_node = None
             for node in nodes.items():
                 if node[0] in visited:
-                    if node[1][0][1] in end_name :
+                    if node[1][0][1] in end_id :
                         finish = node[0]
                     if min_node is None:
                         min_node = node
@@ -1175,38 +1164,36 @@ def standard_algo():
     print 'processing Time :'
     time.show()
 
-def getExtent(point, next_point, x_res, y_res):
-
-    point_geom = point.geometry().asPoint()
-    npoint_geom = next_point.geometry().asPoint()
-
+def getExtent(point_geom, npoint_geom, x_res, y_res):
     x1,y1 = point_geom
     x2,y2 = npoint_geom
 
     dist = math.sqrt(point_geom.sqrDist(npoint_geom))
 
-    xmax = max(x1,x2) + x_res + dist/4
-    xmin = min(x1,x2) - x_res - dist/4
-    ymax = max(y1,y2) + y_res + dist/4
-    ymin = min(y1,y2) - y_res - dist/4
-    extent = [xmin, ymin, xmax, ymax]
+    xmax = max(x1,x2) + x_res/2 + int(dist*2/x_res)
+    xmin = min(x1,x2) - x_res/2 - int(dist*2/x_res)
+    ymax = max(y1,y2) + y_res/2 + int(dist*2/y_res)
+    ymin = min(y1,y2) - y_res/2 - int(dist*2/y_res)
+    extent = [xmin, xmax, ymin, ymax]
     return extent
 
 def getClip(DEM_layer, outpath, extent, x_res, y_res):
     crs = DEM_layer.crs()
-    pipe = QgsRasterPipe()
-    pipe.set(DEM_layer.dataProvider().clone())
-    pipe.set(DEM_layer.renderer().clone())
     
-    file_writer = QgsRasterFileWriter('%s\\tmp.tiff' % os.path.dirname(outpath))
-
-    width = (extent[2] - extent[0]) / x_res
-    height = (extent[3] - extent[1]) / y_res
-    rect = QgsRectangle(extent[0],extent[1],extent[2],extent[3])
-    file_writer.writeRaster(pipe, width, height, rect, crs)
-
-    dem_clip = QgsRasterLayer('%s\\tmp.tiff' % os.path.dirname(outpath),'tmp')
+    dem_clip = '%s\\tmp' % os.path.dirname(outpath)
+    extent=str(str(extent[0])+','+str(extent[1])+','+str(extent[2])+','+str(extent[3]))
+    print DEM_layer.source()
+    processing.runalg('gdalogr:cliprasterbyextent', {'INPUT':DEM_layer.source(),'PROJWIN':extent, 'OUTPUT':dem_clip})
+    dem_clip = dem_clip+'.tif'
     return dem_clip
+
+def map2pixel(point_geom,gt):
+    mx,my = point_geom
+    #Convert from map to pixel coordinates.
+    px = int(( my - gt[3] + gt[5]/2) / gt[5])
+    py = int(((mx - gt[0] - gt[1]/2) / gt[1]))
+    beg_point = "x"+str(px)+"y"+str(py)
+    return beg_point
 
 
 def advanced_algo(point_layer,DEM_layer,tracks_layer,outpath,nb_edges,method,threshold,max_slope):
@@ -1240,10 +1227,28 @@ def advanced_algo(point_layer,DEM_layer,tracks_layer,outpath,nb_edges,method,thr
                 except StopIteration:
                     pass
                 if next_point != None :
-                    extent = getExtent(point, next_point, x_res, y_res)
+                    point_geom = point.geometry().asPoint()
+                    npoint_geom = next_point.geometry().asPoint()
+                    extent = getExtent(point_geom, npoint_geom, x_res, y_res)
                     dem_clip = getClip(DEM_layer, outpath, extent, x_res, y_res)
-
-
+                    in_array, scr, proj, res = imp_raster(dem_clip)
+                    G = rast_to_adv_graph(in_array, res, nb_edges, max_slope, method, threshold)
+                    beg_point = map2pixel(point_geom, scr)
+                    end_point = map2pixel(npoint_geom, scr)
+                    print '%s nodes in the graph' % len(G.nodes)
+                    sum_nodes=0
+                    for node in G.nodes :
+                        sum_nodes += len(G.edges[node])
+                    print '%s edges in the graph' % sum_nodes
+                    path, beg_list, end_id, visited = adv_dijkstra(G,beg_point,end_point)
+                    if end_id != None :
+                        leastCostPath = get_adv_lcp(beg_list,path,end_id, method,threshold)
+                        
+                        coord_list = ids_to_coord(leastCostPath,scr)
+                        end_pt = leastCostPath[0] 
+                        w = visited[end_id]
+                        create_ridge(tracks_layer,coord_list,beg_point,end_pt,w)
+                        print 'Create the least cost path as OGR LineString done'
 
 
 
@@ -1337,15 +1342,15 @@ def launchAutomatracks(point_layer, DEM_layer, outpath, nb_edges,method,threshol
         crs = point_layer.crs().toWkt()
         tracks_layer= outputFormat(crs)
 
-        time.stop()
-        print 'processing Time :'
-        time.show()
-
         point_format = pointChecked(point_layer)
 
         if point_format == True :
             print 'yop'
-            advanced_algo(point_layer,DEM_layer,tracks_layer,outpath,nb_edges,method,threshold,max_slope)
+            advanced_algo(point_layer,DEM_layer,tracks_layer,outpath,int(nb_edges),method,threshold,max_slope)
+
+        time.stop()
+        print 'processing Time :'
+        time.show()
 
         error = QgsVectorFileWriter.writeAsVectorFormat(tracks_layer, outpath, "utf-8", None, "ESRI Shapefile") 
         if error == QgsVectorFileWriter.NoError:
