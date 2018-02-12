@@ -393,7 +393,7 @@ def rast_to_adv_graph(rastArray, res, nb_edge, max_slope, method, threshold) :
                         node1.add_edge(node2)
     return G
 
-def adv_dijkstra(graph, init, end_id) :            
+def adv_dijkstra(graph, init, last, threshold,end_id) :            
     nodes = graph.nodes
     
     beg_list = []
@@ -404,9 +404,59 @@ def adv_dijkstra(graph, init, end_id) :
     #Init
     for node in nodes :
         if node.beg == init :
-            node.cumcost = node.cost
-            beg_list.append(node.id)
-            path[node.id].append((node.id,node.cumcost))
+            if last != None :
+                x,y = last
+                x2,y2 = id_to_coord(node.beg)
+                x1 = x2-x
+                y1 = y2-y
+                x3,y3 = id_to_coord(node.end)
+                az1 = math.degrees(math.atan2(x2 - x1, y2 - y1))
+                az2 = math.degrees(math.atan2(x3 - x2, y3 - y2))
+                
+                if min(x1,x3) <= x2 <= max(x1,x3) and min(y1,y3) <= y2 <= max(y1,y3):
+                
+                    mag_v1 = math.sqrt((x1-x2)**2+(y1-y2)**2)
+                    mag_v2 = math.sqrt((x3-x2)**2+(y3-y2)**2)
+                    
+                    if mag_v1 < mag_v2 :
+                        x_v2 , y_v2 = (x3 - x2, y3 - y2)
+                        x3,y3 = x2+x_v2/mag_v2*mag_v1 ,y2+y_v2/mag_v2*mag_v1
+                    elif mag_v2 < mag_v1 :
+                        x_v2 , y_v2 = (x1 - x2, y1 - y2)
+                        x1,y1 = x2+x_v2/mag_v1*mag_v2 ,y2+y_v2/mag_v1*mag_v2
+                        
+                    x_v1 , y_v1 = (x2 - x1, y2 - y1)
+                    x_v1_ort , y_v1_ort = y_v1 , -x_v1
+                    x_v2 , y_v2 = (x3 - x2, y3 - y2)
+                    x_v2_ort , y_v2_ort = y_v2 , -x_v2
+                    
+                    c_v1_ort = y_v1_ort*x1+(-x_v1_ort)*y1
+                    c_v1_ort = -c_v1_ort
+                    c_v2_ort = y_v2_ort*x3+(-x_v2_ort)*y3
+                    c_v2_ort = -c_v2_ort
+                    
+                    e = [-y_v1_ort,x_v1_ort,c_v1_ort]
+                    f = [-y_v2_ort,x_v2_ort,c_v2_ort]
+                    x4 , y4, colineaire = equationResolve(e,f)
+
+                    if (x4 != None and y4 != None) :
+                        dist1 = math.sqrt((x1-x4)**2+(y1-y4)**2)*5
+                        if dist1 >= threshold :
+                            node.cumcost = node.cost
+                            beg_list.append(node.id)
+                            path[node.id].append((node.id,node.cumcost))
+                        else :
+                            node.cumcost = 9999
+                            path[node.id].append((node.id,node.cumcost))
+                    elif colineaire == True :
+                        node.cumcost = node.cost
+                        beg_list.append(node.id)
+                        path[node.id].append((node.id,node.cumcost))
+            else :
+                node.cumcost = node.cost
+                beg_list.append(node.id)
+                path[node.id].append((node.id,node.cumcost))
+
     
     min_node = NodeGraph(0,0,0,0)
     finish = None
@@ -439,15 +489,20 @@ def adv_dijkstra(graph, init, end_id) :
             else :
                 print 'no solution'
                 finish = None
+                last_beg = last
                 fin_weight = None
                 break
         else :
             finish = min_node.id
             print finish
+            beg,end = finish.split('|')
+            x_beg,y_beg = id_to_coord(beg)
+            x_end,y_end = id_to_coord(end)
+            last_beg = (int(x_end)-int(x_beg),int(y_end)-int(y_beg))
             fin_weight = min_node.cumcost
             print fin_weight
             break
-    return path, beg_list, finish, fin_weight
+    return path, beg_list, finish, last_beg, fin_weight
                     
 def equationResolve(e1,e2):
     determinant=e1[0]*e2[1]-e1[1]*e2[0]
@@ -482,7 +537,7 @@ def ids_to_coord(lcp,gt):
     #return the list of end point with x,y map coordinates
     return coord_list
 
-def create_ridge(out_layer,lcp,id_line, weight) :
+def create_ridge(out_layer,lcp,id_line,point_id, weight) :
     out_layer.startEditing()
     feat = QgsFeature(out_layer.pendingFields())
 
@@ -495,7 +550,7 @@ def create_ridge(out_layer,lcp,id_line, weight) :
         line.append(pt)
     polyline = QgsGeometry.fromPolyline(line)
     feat.setGeometry(polyline)
-    feat.setAttributes([id_line,weight])
+    feat.setAttributes([id_line,point_id,weight])
     out_layer.dataProvider().addFeatures([feat])
     out_layer.commitChanges()
 
@@ -618,7 +673,7 @@ def map2pixel(point_geom,gt):
     beg_point = "x"+str(px)+"y"+str(py)
     return beg_point
 
-def betweenPoint(point, next_point, DEM_layer, outpath, nb_edges, max_slope, method, threshold, x_res, y_res, f_extent):
+def betweenPoint(point, next_point, DEM_layer, outpath, nb_edges, max_slope, method, threshold, x_res, y_res, f_extent, last_beg):
     point_geom = point.geometry().asPoint()
     npoint_geom = next_point.geometry().asPoint()
     extent = getExtent(point_geom, npoint_geom, x_res, y_res, f_extent)
@@ -627,11 +682,12 @@ def betweenPoint(point, next_point, DEM_layer, outpath, nb_edges, max_slope, met
     G = rast_to_adv_graph(in_array, res, nb_edges, max_slope, method, threshold)
     beg_point = map2pixel(point_geom, scr)
     end_point = map2pixel(npoint_geom, scr)
-    path, beg_list, end_id, w = adv_dijkstra(G,beg_point,end_point)
+    path, beg_list, end_id,last_mouv, w = adv_dijkstra(G,beg_point,last_beg,threshold,end_point,)
 
-    return path, beg_list, end_id, w, scr
+    return path, beg_list, end_id, last_mouv, w, scr
 
 def advanced_algo(point_layer,DEM_layer,tracks_layer,outpath,nb_edges,method,threshold,max_slope):
+    crs = tracks_layer.crs().toWkt()
     #resolution raster
     x_res = DEM_layer.rasterUnitsPerPixelX()
     y_res = DEM_layer.rasterUnitsPerPixelY()
@@ -648,7 +704,7 @@ def advanced_algo(point_layer,DEM_layer,tracks_layer,outpath,nb_edges,method,thr
         expr = QgsExpression('L_id = %s'%line)
         req = QgsFeatureRequest(expr)
         line_points = point_layer.getFeatures(req)
-
+        last_beg = None
         for point in line_points :
             nature = point.attribute('nature')
             if nature != 'end' :
@@ -668,14 +724,59 @@ def advanced_algo(point_layer,DEM_layer,tracks_layer,outpath,nb_edges,method,thr
                     end_id = None
                     while end_id == None and f_extent < 5:
                         f_extent+=1
-                        path, beg_list, end_id, w, scr = betweenPoint(point, next_point, DEM_layer, outpath, nb_edges, max_slope, method, threshold, x_res, y_res, f_extent)
+                        path, beg_list, end_id, last_beg, w, scr = betweenPoint(point, next_point, DEM_layer, outpath, nb_edges, max_slope, method, threshold, x_res, y_res, f_extent, last_beg)
 
                     if end_id != None :
                         leastCostPath = get_adv_lcp(beg_list,path,end_id, method,threshold)
                         
                         coord_list = ids_to_coord(leastCostPath,scr)
                         end_pt = leastCostPath[0] 
-                        create_ridge(tracks_layer,coord_list,line_id,w)
+                        create_ridge(tracks_layer,coord_list,line,point_id,w)
+                        expr = QgsExpression('L_id = %s AND P_id= %s'%(line, str(point_id)))
+                        req = QgsFeatureRequest(expr)
+                        last_line_it = tracks_layer.getFeatures(req)
+                        try :
+                            last_line = next(last_line_it)
+                            print last_line.id()
+                            last_geom = last_line.geometry()
+                            feats_line = tracks_layer.getFeatures(QgsFeatureRequest().setFilterRect(last_geom.boundingBox()))
+                            cros= False
+                            for feat_line in feats_line:
+                                if feat_line.geometry().crosses(last_geom):
+                                    print "oh it crosses"
+                                    cros = True
+                                    geom_cros = feat_line.geometry().asPolyline()
+                                    geom_cros_e = [geom_cros[0],geom_cros[-1]]
+                            if cros == True :
+                                attr_last_line = last_line.attributes()
+                                temp_layer = outputFormat(crs,'tmp_Tracks')
+                                temp_path = '%s\\tmp_layer.shp' % os.path.dirname(outpath)
+                                QgsVectorFileWriter.writeAsVectorFormat(temp_layer, temp_path, "utf-8", None, "ESRI Shapefile")
+                                temp_layer = QgsVectorLayer(temp_path,'temp_layer','ogr')
+                                temp_layer.startEditing()
+                                temp_layer.dataProvider().addFeatures([last_line])
+                                temp_layer.commitChanges()
+                                print "let's cut"
+                                cut_line = processing.runalg('qgis:splitlineswithlines',temp_layer,tracks_layer,None)
+                                cut_line = QgsVectorLayer(cut_line['OUTPUT'],'cut',"ogr")
+                                print 'is it good ?'
+                                for lin in cut_line.getFeatures() :
+                                    geom_lin = lin.geometry().asPolyline()
+                                    if geom_lin[0] not in geom_cros_e and geom_lin[-1] not in geom_cros_e :
+                                        lin.setAttributes(attr_last_line)
+                                        tracks_layer.startEditing()
+                                        tracks_layer.deleteFeatures([last_line.id()])
+                                        tracks_layer.commitChanges()
+                                        tracks_layer.startEditing()
+                                        tracks_layer.dataProvider().addFeatures([lin])
+                                        tracks_layer.commitChanges()
+                                        print 'ok'
+                                temp_layer = None
+                                cut_line = None
+                        except StopIteration:
+                            pass
+
+
 
 def pointChecked(point_layer) :
     pr = point_layer.dataProvider()
@@ -690,14 +791,16 @@ def pointChecked(point_layer) :
 
     return point_format
 
-def outputFormat(crs):
-    tracks_layer = QgsVectorLayer('Linestring?crs=' + crs,'Tracks','memory')
+def outputFormat(crs, name='Tracks'):
+    tracks_layer = QgsVectorLayer('Linestring?crs=' + crs,name,'memory')
     name_L_id = "L_id"
+    name_P_id = "P_id"
     name_cost = "cost"
     provider = tracks_layer.dataProvider()
     caps = provider.capabilities()
     if caps & QgsVectorDataProvider.AddAttributes:
         res = provider.addAttributes( [ QgsField(name_L_id, QVariant.String) ,
+                                        QgsField(name_P_id, QVariant.String) ,
                                         QgsField(name_cost, QVariant.Double,"double", 5, 1) ] )
         tracks_layer.updateFields()
 
