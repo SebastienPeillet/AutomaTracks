@@ -739,10 +739,8 @@ def advanced_algo(point_layer,DEM_layer,tracks_layer,outpath,nb_edges,method,thr
                         last_line_it = tracks_layer.getFeatures(req)
                         try :
                             last_line = next(last_line_it)
-                            print last_line.id()
                             last_geom = last_line.geometry()
                             last_geom_p = last_geom.asPolyline()
-                            print last_geom_p
                             last_geom_e = [last_geom.asPolyline()[0],last_geom.asPolyline()[-1]]
                             feats_line = tracks_layer.getFeatures(QgsFeatureRequest().setFilterRect(last_geom.boundingBox()))
                             cros = False
@@ -754,9 +752,10 @@ def advanced_algo(point_layer,DEM_layer,tracks_layer,outpath,nb_edges,method,thr
                                     if feat_line.geometry().crosses(last_geom):
                                         print "oh it crosses"
                                         cros = True
+                                        commun = False
                                         geom_cros = feat_line.geometry().asPolyline()
                                         geom_cros_e = [geom_cros[0],geom_cros[-1]]
-                                    else :
+                                    elif cros == False :
                                         for i, pt in enumerate(last_geom_p[1:-1]) :
                                             ft_line_geom = feat_line.geometry().asPolyline()
                                             if pt in ft_line_geom and (i+2) not in list_commun :
