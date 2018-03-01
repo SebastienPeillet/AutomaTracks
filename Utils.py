@@ -59,7 +59,6 @@ class AdvGraph ():
         self.slope_info=defaultdict(list)
         self.length = {}
         self.slope = {}
-        self.weight = {}
     
     def add_nodes(self, id, beg_id, end_id, cost) :
         node = NodeGraph(id,beg_id, end_id, cost)
