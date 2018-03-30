@@ -17,7 +17,7 @@ import os
 import sys
 from qgis.core import QgsVectorLayer, QgsVectorFileWriter,QgsVectorDataProvider, QgsField, \
                         QgsExpression, QgsFeatureRequest, QgsRasterPipe, QgsRasterFileWriter, \
-                        QgsRectangle, QgsRasterLayer, QgsFeature, QgsPoint, QgsGeometry
+                        QgsRectangle, QgsRasterLayer, QgsFeature, QgsPoint, QgsGeometry, QgsRaster
 import processing
 from PyQt4.QtCore import QVariant
 from osgeo import gdal
@@ -81,7 +81,6 @@ class NodeGraph():
     def add_edge(self,node) :
         self.edges.append(node)
         
-    
 def imp_raster(dem_clip):
     # Open the input raster to retrieve values in an array
     data = gdal.Open(dem_clip,1)
@@ -392,11 +391,12 @@ def rast_to_adv_graph(rastArray, res, nb_edge, max_slope, method, threshold) :
                         node1.add_edge(node2)
     return G
 
-def adv_dijkstra(graph, init, last, threshold,end_id) :            
+def adv_dijkstra(graph, init, last, threshold, end_id, method, usefull_beg_tracks, usefull_end_tracks) :            
     nodes = graph.nodes
     
     beg_list = []
-    
+    end_ids = [end_id]
+    del_ids= []
     #dict to get path
     path = defaultdict(list)
     
@@ -404,7 +404,86 @@ def adv_dijkstra(graph, init, last, threshold,end_id) :
     for node in nodes :
         if node.beg == init :
             if last != None :
-                x,y = last
+                if method == 'r' :
+                    x,y = last
+                    x2,y2 = id_to_coord(node.beg)
+                    x1 = x2-x
+                    y1 = y2-y
+                    x3,y3 = id_to_coord(node.end)
+                    az1 = math.degrees(math.atan2(x2 - x1, y2 - y1))
+                    az2 = math.degrees(math.atan2(x3 - x2, y3 - y2))
+                    
+                    if min(x1,x3) <= x2 <= max(x1,x3) and min(y1,y3) <= y2 <= max(y1,y3):
+                    
+                        mag_v1 = math.sqrt((x1-x2)**2+(y1-y2)**2)
+                        mag_v2 = math.sqrt((x3-x2)**2+(y3-y2)**2)
+                        
+                        if mag_v1 < mag_v2 :
+                            x_v2 , y_v2 = (x3 - x2, y3 - y2)
+                            x3,y3 = x2+x_v2/mag_v2*mag_v1 ,y2+y_v2/mag_v2*mag_v1
+                        elif mag_v2 < mag_v1 :
+                            x_v2 , y_v2 = (x1 - x2, y1 - y2)
+                            x1,y1 = x2+x_v2/mag_v1*mag_v2 ,y2+y_v2/mag_v1*mag_v2
+                            
+                        x_v1 , y_v1 = (x2 - x1, y2 - y1)
+                        x_v1_ort , y_v1_ort = y_v1 , -x_v1
+                        x_v2 , y_v2 = (x3 - x2, y3 - y2)
+                        x_v2_ort , y_v2_ort = y_v2 , -x_v2
+                        
+                        c_v1_ort = y_v1_ort*x1+(-x_v1_ort)*y1
+                        c_v1_ort = -c_v1_ort
+                        c_v2_ort = y_v2_ort*x3+(-x_v2_ort)*y3
+                        c_v2_ort = -c_v2_ort
+                        
+                        e = [-y_v1_ort,x_v1_ort,c_v1_ort]
+                        f = [-y_v2_ort,x_v2_ort,c_v2_ort]
+                        x4 , y4, colineaire = equationResolve(e,f)
+
+                        if (x4 != None and y4 != None) :
+                            dist1 = math.sqrt((x1-x4)**2+(y1-y4)**2)*5
+                            if dist1 >= threshold :
+                                node.cumcost = node.cost
+                                beg_list.append(node.id)
+                                path[node.id].append((node.id,node.cumcost))
+                            else :
+                                node.cumcost = 9999
+                                path[node.id].append((node.id,node.cumcost))
+                        elif colineaire == True :
+                            node.cumcost = node.cost
+                            beg_list.append(node.id)
+                            path[node.id].append((node.id,node.cumcost))
+                elif method == 'a' :
+                    x,y = last
+                    x2,y2 = id_to_coord(node.beg)
+                    x1 = x2-x
+                    y1 = y2-y
+                    x3,y3 = id_to_coord(node.end)
+                    az1 = math.degrees(math.atan2(x2 - x1, y2 - y1))
+                    az2 = math.degrees(math.atan2(x3 - x2, y3 - y2))
+                    if az1 < 0 and az2 > 0 :
+                        angle = math.fabs(az1)+az2
+                    elif az1 > 0 and az2 < 0 :
+                        angle = math.fabs(az2)+az1
+                    else :
+                        angle = math.fabs(az1-az2)
+                    if angle < -180 :
+                        angle = angle + 360
+                    if angle > 180 :
+                        angle = angle - 360
+                    if math.fabs(angle) <= threshold :
+                        node.cumcost = node.cost
+                        beg_list.append(node.id)
+                        path[node.id].append((node.id,node.cumcost))
+                    else :
+                        node.cumcost = 9999
+                        path[node.id].append((node.id,node.cumcost))
+            else :
+                node.cumcost = node.cost
+                beg_list.append(node.id)
+                path[node.id].append((node.id,node.cumcost))
+        elif node.beg in usefull_beg_tracks:
+            if method == 'r' :
+                x,y = usefull_beg_tracks[node.beg]
                 x2,y2 = id_to_coord(node.beg)
                 x1 = x2-x
                 y1 = y2-y
@@ -451,18 +530,106 @@ def adv_dijkstra(graph, init, last, threshold,end_id) :
                         node.cumcost = node.cost
                         beg_list.append(node.id)
                         path[node.id].append((node.id,node.cumcost))
-            else :
-                node.cumcost = node.cost
-                beg_list.append(node.id)
-                path[node.id].append((node.id,node.cumcost))
+            elif method == 'a' :
+                x,y = usefull_beg_tracks[node.beg]
+                x2,y2 = id_to_coord(node.beg)
+                x1 = x2-x
+                y1 = y2-y
+                x3,y3 = id_to_coord(node.end)
+                az1 = math.degrees(math.atan2(x2 - x1, y2 - y1))
+                az2 = math.degrees(math.atan2(x3 - x2, y3 - y2))
+                if az1 < 0 and az2 > 0 :
+                    angle = math.fabs(az1)+az2
+                elif az1 > 0 and az2 < 0 :
+                    angle = math.fabs(az2)+az1
+                else :
+                    angle = math.fabs(az1-az2)
+                if angle < -180 :
+                    angle = angle + 360
+                if angle > 180 :
+                    angle = angle - 360
+                if math.fabs(angle) <= threshold :
+                    node.cumcost = node.cost
+                    beg_list.append(node.id)
+                    path[node.id].append((node.id,node.cumcost))
+                else :
+                    node.cumcost = 9999
+                    path[node.id].append((node.id,node.cumcost))
+        elif node.end in usefull_end_tracks:
+            if method == 'r' :
+                x,y = usefull_end_tracks[node.end]
+                x2,y2 = id_to_coord(node.end)
+                x1 = x2-x
+                y1 = y2-y
+                x3,y3 = id_to_coord(node.beg)
+                az1 = math.degrees(math.atan2(x2 - x1, y2 - y1))
+                az2 = math.degrees(math.atan2(x3 - x2, y3 - y2))
+                
+                if min(x1,x3) <= x2 <= max(x1,x3) and min(y1,y3) <= y2 <= max(y1,y3):
+                
+                    mag_v1 = math.sqrt((x1-x2)**2+(y1-y2)**2)
+                    mag_v2 = math.sqrt((x3-x2)**2+(y3-y2)**2)
+                    
+                    if mag_v1 < mag_v2 :
+                        x_v2 , y_v2 = (x3 - x2, y3 - y2)
+                        x3,y3 = x2+x_v2/mag_v2*mag_v1 ,y2+y_v2/mag_v2*mag_v1
+                    elif mag_v2 < mag_v1 :
+                        x_v2 , y_v2 = (x1 - x2, y1 - y2)
+                        x1,y1 = x2+x_v2/mag_v1*mag_v2 ,y2+y_v2/mag_v1*mag_v2
+                        
+                    x_v1 , y_v1 = (x2 - x1, y2 - y1)
+                    x_v1_ort , y_v1_ort = y_v1 , -x_v1
+                    x_v2 , y_v2 = (x3 - x2, y3 - y2)
+                    x_v2_ort , y_v2_ort = y_v2 , -x_v2
+                    
+                    c_v1_ort = y_v1_ort*x1+(-x_v1_ort)*y1
+                    c_v1_ort = -c_v1_ort
+                    c_v2_ort = y_v2_ort*x3+(-x_v2_ort)*y3
+                    c_v2_ort = -c_v2_ort
+                    
+                    e = [-y_v1_ort,x_v1_ort,c_v1_ort]
+                    f = [-y_v2_ort,x_v2_ort,c_v2_ort]
+                    x4 , y4, colineaire = equationResolve(e,f)
 
-    
+                    if (x4 != None and y4 != None) :
+                        dist1 = math.sqrt((x1-x4)**2+(y1-y4)**2)*5
+                        if dist1 >= threshold :
+                            end_ids.append(node.end)
+                        else :
+                            del_ids.append(node.id)
+                    elif colineaire == True :
+                        end_ids.append(node.end)
+            elif method == 'a' :
+                x,y = usefull_end_tracks[node.end]
+                x2,y2 = id_to_coord(node.end)
+                x1 = x2-x
+                y1 = y2-y
+                x3,y3 = id_to_coord(node.beg)
+                az1 = math.degrees(math.atan2(x2 - x1, y2 - y1))
+                az2 = math.degrees(math.atan2(x3 - x2, y3 - y2))
+                if az1 < 0 and az2 > 0 :
+                    angle = math.fabs(az1)+az2
+                elif az1 > 0 and az2 < 0 :
+                    angle = math.fabs(az2)+az1
+                else :
+                    angle = math.fabs(az1-az2)
+                if angle < -180 :
+                    angle = angle + 360
+                if angle > 180 :
+                    angle = angle - 360
+                if math.fabs(angle) <= threshold :
+                    end_ids.append(node.end)
+                else :
+                    del_ids.append(node.id)
+
+    nodes = [node for node in nodes if node.id not in del_ids]
+
     min_node = NodeGraph(0,0,0,0)
     finish = None
     fin_weight = None
     count = 0
     while nodes: 
-        if min_node.end != end_id:
+        if min_node.end not in end_ids:
             min_node = None
             for i,node in enumerate(nodes) :
                 if node.cumcost != None :
@@ -664,6 +831,85 @@ def getClip(DEM_layer, outpath, extent, x_res, y_res):
     dem_clip = dem_clip+'.tif'
     return dem_clip
 
+def getUsefullTrack(extent,tracks_layer,line_id,scr,point_layer, in_point):
+    nature = in_point.attribute('nature')
+    rect = QgsRectangle(extent[0],extent[1],extent[2],extent[3])
+    usefull_track_dict = {}
+    if nature == 'start':
+        boundingBox = in_point.geometry().buffer(1,4).boundingBox()
+        expre = QgsExpression('L_id != %s'%(in_point.attribute('L_id')))
+        reque = QgsFeatureRequest(expre).setFilterRect(boundingBox)
+        points = point_layer.getFeatures(reque)
+        for point in points :
+            l_id = point.attribute('L_id')
+            expr = QgsExpression('L_id = %s'%(l_id))
+            requ = QgsFeatureRequest(expr).setFilterRect(rect)
+            t_feats = tracks_layer.getFeatures(requ)
+            for feat in t_feats:
+                ft_geom = feat.geometry().asPolyline()
+                for i,pt in enumerate(reversed(ft_geom)):
+                    if i != len(ft_geom)-1:
+                        Qpt = pt
+                        Qptp = ft_geom[-i-2]
+                        if rect.contains(Qptp) and rect.contains(Qpt):
+                            pt_x, pt_y = id_to_coord(map2pixel(pt,scr))
+                            end_id = map2pixel(ft_geom[-i-2],scr)
+                            ptp_x, ptp_y = id_to_coord(end_id)
+                            last = (int(ptp_x)-int(pt_x),int(ptp_y)-int(pt_y))
+                            usefull_track_dict[end_id]=last
+    elif nature == 'end':
+        boundingBox = in_point.geometry().buffer(1,4).boundingBox()
+        expre = QgsExpression('L_id != %s'%(in_point.attribute('L_id')))
+        reque = QgsFeatureRequest(expre).setFilterRect(boundingBox)
+        points = point_layer.getFeatures(reque)
+        for point in points :
+            p_nat = point.attribute('nature')
+            l_id = point.attribute('L_id')
+            expr = QgsExpression('L_id = %s'%(l_id))
+            requ = QgsFeatureRequest(expr).setFilterRect(rect)
+            t_feats = tracks_layer.getFeatures(requ)
+            for feat in t_feats:
+                ft_geom = feat.geometry().asPolyline()
+                if p_nat == 'start':
+                    for i,pt in enumerate(reversed(ft_geom)):
+                        if i != len(ft_geom)-1:
+                            Qpt = pt
+                            Qptp = ft_geom[-i-2]
+                            if rect.contains(Qptp) and rect.contains(Qpt):
+                                pt_x, pt_y = id_to_coord(map2pixel(pt,scr))
+                                end_id = map2pixel(ft_geom[-i-2],scr)
+                                ptp_x, ptp_y = id_to_coord(end_id)
+                                last = (int(ptp_x)-int(pt_x),int(ptp_y)-int(pt_y))
+                                usefull_track_dict[end_id]=last
+                elif p_nat == 'end':
+                    for i,pt in enumerate(ft_geom):
+                        if i != len(ft_geom)-1:
+                            Qpt = pt
+                            Qptp = ft_geom[i+1]
+                            if rect.contains(Qptp) and rect.contains(Qpt):
+                                pt_x, pt_y = id_to_coord(map2pixel(pt,scr))
+                                end_id = map2pixel(ft_geom[i+1],scr)
+                                ptp_x, ptp_y = id_to_coord(end_id)
+                                last = (int(ptp_x)-int(pt_x),int(ptp_y)-int(pt_y))
+                                usefull_track_dict[end_id]=last
+    else:
+        expr = QgsExpression('L_id = %s'%(line_id))
+        req = QgsFeatureRequest(expr).setFilterRect(rect)
+        feats = tracks_layer.getFeatures(req)
+        for feat in feats:
+            ft_geom = feat.geometry().asPolyline()
+            for i,pt in enumerate(reversed(ft_geom)):
+                if i != len(ft_geom)-1:
+                    Qpt = pt
+                    Qptp = ft_geom[-i-2]
+                    if rect.contains(Qptp) and rect.contains(Qpt):
+                        pt_x, pt_y = id_to_coord(map2pixel(pt,scr))
+                        end_id = map2pixel(ft_geom[-i-2],scr)
+                        ptp_x, ptp_y = id_to_coord(end_id)
+                        last = (int(ptp_x)-int(pt_x),int(ptp_y)-int(pt_y))
+                        usefull_track_dict[end_id]=last
+    return usefull_track_dict
+
 def map2pixel(point_geom,gt):
     mx,my = point_geom
     #Convert from map to pixel coordinates.
@@ -672,7 +918,7 @@ def map2pixel(point_geom,gt):
     beg_point = "x"+str(px)+"y"+str(py)
     return beg_point
 
-def betweenPoint(point, next_point, DEM_layer, outpath, nb_edges, max_slope, method, threshold, x_res, y_res, f_extent, last_beg):
+def betweenPoint(point, next_point, point_layer, DEM_layer, tracks_layer, line_id,outpath, nb_edges, max_slope, method, threshold, x_res, y_res, f_extent, last_beg):
     point_geom = point.geometry().asPoint()
     npoint_geom = next_point.geometry().asPoint()
     extent = getExtent(point_geom, npoint_geom, x_res, y_res, f_extent)
@@ -680,8 +926,13 @@ def betweenPoint(point, next_point, DEM_layer, outpath, nb_edges, max_slope, met
     in_array, scr, proj, res = imp_raster(dem_clip)
     G = rast_to_adv_graph(in_array, res, nb_edges, max_slope, method, threshold)
     beg_point = map2pixel(point_geom, scr)
+    usefull_beg_tracks = getUsefullTrack(extent,tracks_layer,line_id,scr,point_layer,point)
+    if next_point.attribute('nature')=='end':
+        usefull_end_tracks = getUsefullTrack(extent,tracks_layer,line_id,scr,point_layer,next_point)
+    else:
+        usefull_end_tracks = []
     end_point = map2pixel(npoint_geom, scr)
-    path, beg_list, end_id,last_mouv, w = adv_dijkstra(G,beg_point,last_beg,threshold,end_point,)
+    path, beg_list, end_id,last_mouv, w = adv_dijkstra(G,beg_point,last_beg,threshold,end_point,method,usefull_beg_tracks,usefull_end_tracks)
 
     return path, beg_list, end_id, last_mouv, w, scr
 
@@ -705,18 +956,308 @@ def advanced_algo(point_layer,DEM_layer,tracks_layer,outpath,nb_edges,method,thr
         req = QgsFeatureRequest(expr)
         line_points = point_layer.getFeatures(req)
         last_beg = None
-        for point in line_points :
+        list_points = []
+        nature = None
+        for point in line_points:
+            next_point_it=None
+            nnext_point_it = None
+            previous_point_it = None
+            pprevious_point_it = None
+            nature = point.attribute('nature')
+            point_id = point.attribute('P_id')
+            if nature == 'start' :
+                list_points.append(point_id)
+                expre = QgsExpression('L_id = %s AND P_id= %s'%(line, str(int(point_id)+1)))
+                reque = QgsFeatureRequest(expre)
+                next_point_it = point_layer.getFeatures(reque)
+                next_point = next(next_point_it)
+                nnature = next_point.attribute('nature')
+                point_geom = point.geometry().asPoint()
+                next_point_geom = next_point.geometry().asPoint()
+                point_alt = DEM_layer.dataProvider().identify(point_geom, QgsRaster.IdentifyFormatValue).results()[1]
+                next_point_alt = DEM_layer.dataProvider().identify(next_point_geom, QgsRaster.IdentifyFormatValue).results()[1]
+                length = round(math.sqrt(point_geom.sqrDist(next_point_geom)), 3)
+                coeff = math.fabs(point_alt-next_point_alt)/length
+                if coeff < 0.105 or nnature == 'end':
+                    next_point_id = next_point.attribute('P_id')
+                    list_points.append(next_point_id)
+                    nature = nnature
+                else :
+                    expre = QgsExpression('L_id = %s AND P_id= %s'%(line, str(int(point_id)+2)))
+                    reque = QgsFeatureRequest(expre)
+                    nnext_point_it = point_layer.getFeatures(reque)
+                    nnext_point = next(nnext_point_it)
+                    nnnature = nnext_point.attribute('nature')
+                    nnext_point_geom = nnext_point.geometry().asPoint()
+                    nnext_point_alt = DEM_layer.dataProvider().identify(nnext_point_geom, QgsRaster.IdentifyFormatValue).results()[1]
+                    length = round(math.sqrt(point_geom.sqrDist(nnext_point_geom)), 3)
+                    ncoeff = math.fabs(point_alt-nnext_point_alt)/length
+                    if ncoeff < coeff:
+                        nnext_point_id = nnext_point.attribute('P_id')
+                        list_points.append(nnext_point_id)
+                        nature = nnnature
+                    else :
+                        next_point_id = next_point.attribute('P_id')
+                        list_points.append(next_point_id)
+                        nature = nnature
+            elif point_id in list_points and nature !='end':
+                expre = QgsExpression('L_id = %s AND P_id= %s'%(line, str(int(point_id)+1)))
+                reque = QgsFeatureRequest(expre)
+                next_point_it = point_layer.getFeatures(reque)
+                next_point = next(next_point_it)
+                next_point_it=None
+                nnature = next_point.attribute('nature')
+                point_geom = point.geometry().asPoint()
+                next_point_geom = next_point.geometry().asPoint()
+                point_alt = DEM_layer.dataProvider().identify(point_geom, QgsRaster.IdentifyFormatValue).results()[1]
+                next_point_alt = DEM_layer.dataProvider().identify(next_point_geom, QgsRaster.IdentifyFormatValue).results()[1]
+                length = round(math.sqrt(point_geom.sqrDist(next_point_geom)), 3)
+                coeff = math.fabs(point_alt-next_point_alt)/length
+                if coeff < 0.105 :
+                    next_point_id = next_point.attribute('P_id')
+                    list_points.append(next_point_id)
+                    nature = nnature
+                elif (int(point_id) - int(list_points[-2])) == 1 :
+                    expre = QgsExpression('L_id = %s AND P_id= %s'%(line, str(list_points[-2])))
+                    reque = QgsFeatureRequest(expre)
+                    previous_point_it = point_layer.getFeatures(reque)
+                    previous_point = next(previous_point_it)
+                    previous_point_it = None
+                    pnature = previous_point.attribute('nature')
+                    previous_point_geom = previous_point.geometry().asPoint()
+                    previous_point_alt = DEM_layer.dataProvider().identify(previous_point_geom, QgsRaster.IdentifyFormatValue).results()[1]
+                    marge = math.fabs(point_alt-previous_point_alt)/math.fabs(point_alt-next_point_alt)
+                    if previous_point_alt <= point_alt <= next_point_alt or previous_point_alt >= point_alt >= next_point_alt or marge < 0.15 : 
+                        length = round(math.sqrt(next_point_geom.sqrDist(previous_point_geom)), 3)
+                        pcoeff = math.fabs(next_point_alt-previous_point_alt)/length
+                        if pcoeff < 0.105:
+                            next_point_id = next_point.attribute('P_id')
+                            del list_points[-1]
+                            list_points.append(next_point_id)
+                            nature = nnature
+                        elif len(list_points)>=3 :
+                            expre = QgsExpression('L_id = %s AND P_id= %s'%(line, str(list_points[-3])))
+                            reque = QgsFeatureRequest(expre)
+                            pprevious_point_it = point_layer.getFeatures(reque)
+                            pprevious_point = next(pprevious_point_it)
+                            pprevious_point_it = None
+                            ppnature = pprevious_point.attribute('nature')
+                            pprevious_point_geom = pprevious_point.geometry().asPoint()
+                            pprevious_point_alt = DEM_layer.dataProvider().identify(pprevious_point_geom, QgsRaster.IdentifyFormatValue).results()[1]
+                            marge = math.fabs(point_alt-pprevious_point_alt)/math.fabs(point_alt-next_point_alt)
+                            if pprevious_point_alt <= previous_point_alt <= next_point_alt or pprevious_point_alt >= previous_point_alt >= next_point_alt or marge < 0.15 : 
+                                length = round(math.sqrt(next_point_geom.sqrDist(pprevious_point_geom)), 3)
+                                ppcoeff = math.fabs(next_point_alt-pprevious_point_alt)/length
+                                if ppcoeff < 0.105:
+                                    next_point_id = next_point.attribute('P_id')
+                                    del list_points[-1]
+                                    del list_points[-1]
+                                    list_points.append(next_point_id)
+                                    nature = nnature
+                                else :
+                                    best = min(coeff,pcoeff,ppcoeff)
+                                    if best < 0.15 :
+                                        if best == coeff:
+                                            next_point_id = next_point.attribute('P_id')
+                                            list_points.append(next_point_id)
+                                            nature = nnature
+                                        elif best == pcoeff:
+                                            previous_point_id = previous_point.attribute('P_id')
+                                            del list_points[-1]
+                                            list_points.append(previous_point_id)
+                                            nature = nnature
+                                        else:
+                                            next_point_id = next_point.attribute('P_id')
+                                            del list_points[-1]
+                                            del list_points[-1]
+                                            list_points.append(next_point_id)
+                                            nature = nnature
+                                    elif nnature != 'end' :
+                                        expre = QgsExpression('L_id = %s AND P_id= %s'%(line, str(int(point_id)+2)))
+                                        reque = QgsFeatureRequest(expre)
+                                        nnext_point_it = point_layer.getFeatures(reque)
+                                        nnext_point = next(nnext_point_it)
+                                        nnext_point_it = None
+                                        nnnature = nnext_point.attribute('nature')
+                                        nnext_point_geom = nnext_point.geometry().asPoint()
+                                        nnext_point_alt = DEM_layer.dataProvider().identify(nnext_point_geom, QgsRaster.IdentifyFormatValue).results()[1]
+                                        length = round(math.sqrt(point_geom.sqrDist(nnext_point_geom)), 3)
+                                        ncoeff = math.fabs(point_alt-nnext_point_alt)/length
+                                        if ncoeff < best and next_point_alt > point_alt and next_point_alt > nnext_point_alt :
+                                            nnext_point_id = nnext_point.attribute('P_id')
+                                            list_points.append(nnext_point_id)
+                                            nature = nnnature
+                                        else :
+                                            if best == coeff:
+                                                next_point_id = next_point.attribute('P_id')
+                                                list_points.append(next_point_id)
+                                                nature = nnature
+                                            elif best == pcoeff:
+                                                next_point_id = next_point.attribute('P_id')
+                                                del list_points[-1]
+                                                list_points.append(next_point_id)
+                                                nature = nnature
+                                            else:
+                                                next_point_id = next_point.attribute('P_id')
+                                                del list_points[-1]
+                                                del list_points[-1]
+                                                list_points.append(next_point_id)
+                                                nature = nnature
+                                    else :
+                                        if best == coeff:
+                                            next_point_id = next_point.attribute('P_id')
+                                            list_points.append(next_point_id)
+                                            nature = nnature
+                                        elif best == pcoeff:
+                                            next_point_id = next_point.attribute('P_id')
+                                            del list_points[-1]
+                                            list_points.append(next_point_id)
+                                            nature = nnature
+                                        else:
+                                            next_point_id = next_point.attribute('P_id')
+                                            del list_points[-1]
+                                            del list_points[-1]
+                                            list_points.append(next_point_id)
+                                            nature = nnature
+                            else :
+                                best = min(coeff,pcoeff)
+                                if best < 0.15 or nnature == 'end':
+                                    if best == coeff:
+                                        next_point_id = next_point.attribute('P_id')
+                                        list_points.append(next_point_id)
+                                        nature = nnature
+                                    else:
+                                        next_point_id = next_point.attribute('P_id')
+                                        del list_points[-1]
+                                        list_points.append(next_point_id)
+                                        nature = nnature
+                                else:
+                                    expre = QgsExpression('L_id = %s AND P_id= %s'%(line, str(int(point_id)+2)))
+                                    reque = QgsFeatureRequest(expre)
+                                    nnext_point_it = point_layer.getFeatures(reque)
+                                    nnext_point = next(nnext_point_it)
+                                    nnext_point_it=None
+                                    nnnature = nnext_point.attribute('nature')
+                                    nnext_point_geom = nnext_point.geometry().asPoint()
+                                    nnext_point_alt = DEM_layer.dataProvider().identify(nnext_point_geom, QgsRaster.IdentifyFormatValue).results()[1]
+                                    length = round(math.sqrt(point_geom.sqrDist(nnext_point_geom)), 3)
+                                    ncoeff = math.fabs(point_alt-nnext_point_alt)/length
+                                    if ncoeff < best and next_point_alt > point_alt and next_point_alt > nnext_point_alt :
+                                        nnext_point_id = nnext_point.attribute('P_id')
+                                        list_points.append(nnext_point_id)
+                                        nature = nnnature
+                                    else :
+                                        if best == coeff:
+                                            next_point_id = next_point.attribute('P_id')
+                                            list_points.append(next_point_id)
+                                            nature = nnature
+                                        else:
+                                            next_point_id = next_point.attribute('P_id')
+                                            del list_points[-1]
+                                            list_points.append(next_point_id)
+                                            nature = nnature
+                        else :
+                            best = min(coeff,pcoeff)
+                            if best < 0.15 or nnature == 'end':
+                                if best == coeff:
+                                    next_point_id = next_point.attribute('P_id')
+                                    list_points.append(next_point_id)
+                                    nature = nnature
+                                else:
+                                    next_point_id = next_point.attribute('P_id')
+                                    del list_points[-1]
+                                    list_points.append(next_point_id)
+                                    nature = nnature
+                            else:
+                                expre = QgsExpression('L_id = %s AND P_id= %s'%(line, str(int(point_id)+2)))
+                                reque = QgsFeatureRequest(expre)
+                                nnext_point_it = point_layer.getFeatures(reque)
+                                nnext_point = next(nnext_point_it)
+                                nnext_point_it=None
+                                nnnature = nnext_point.attribute('nature')
+                                nnext_point_geom = nnext_point.geometry().asPoint()
+                                nnext_point_alt = DEM_layer.dataProvider().identify(nnext_point_geom, QgsRaster.IdentifyFormatValue).results()[1]
+                                length = round(math.sqrt(point_geom.sqrDist(nnext_point_geom)), 3)
+                                ncoeff = math.fabs(point_alt-nnext_point_alt)/length
+                                if ncoeff < best :
+                                    nnext_point_id = nnext_point.attribute('P_id')
+                                    list_points.append(nnext_point_id)
+                                    nature = nnnature
+                                else :
+                                    if best == coeff:
+                                        next_point_id = next_point.attribute('P_id')
+                                        list_points.append(next_point_id)
+                                        nature = nnature
+                                    else:
+                                        next_point_id = next_point.attribute('P_id')
+                                        del list_points[-1]
+                                        list_points.append(next_point_id)
+                                        nature = nnature
+                    elif nnature != 'end' :
+                        expre = QgsExpression('L_id = %s AND P_id= %s'%(line, str(int(point_id)+2)))
+                        reque = QgsFeatureRequest(expre)
+                        nnext_point_it = point_layer.getFeatures(reque)
+                        nnext_point = next(nnext_point_it)
+                        nnext_point_it = None
+                        nnnature = nnext_point.attribute('nature')
+                        nnext_point_geom = nnext_point.geometry().asPoint()
+                        nnext_point_alt = DEM_layer.dataProvider().identify(nnext_point_geom, QgsRaster.IdentifyFormatValue).results()[1]
+                        length = round(math.sqrt(point_geom.sqrDist(nnext_point_geom)), 3)
+                        ncoeff = math.fabs(point_alt-nnext_point_alt)/length
+                        if ncoeff < coeff :
+                            nnext_point_id = nnext_point.attribute('P_id')
+                            list_points.append(nnext_point_id)
+                            nature = nnnature
+                        else :
+                            next_point_id = next_point.attribute('P_id')
+                            list_points.append(next_point_id)
+                            nature = nnature
+                    else :
+                        next_point_id = next_point.attribute('P_id')
+                        list_points.append(next_point_id)
+                        nature = nnature
+                elif nnature != 'end' :
+                    expre = QgsExpression('L_id = %s AND P_id= %s'%(line, str(int(point_id)+2)))
+                    reque = QgsFeatureRequest(expre)
+                    nnext_point_it = point_layer.getFeatures(reque)
+                    nnext_point = next(nnext_point_it)
+                    nnext_point_it = None
+                    nnnature = nnext_point.attribute('nature')
+                    nnext_point_geom = nnext_point.geometry().asPoint()
+                    nnext_point_alt = DEM_layer.dataProvider().identify(nnext_point_geom, QgsRaster.IdentifyFormatValue).results()[1]
+                    length = round(math.sqrt(point_geom.sqrDist(nnext_point_geom)), 3)
+                    ncoeff = math.fabs(point_alt-nnext_point_alt)/length
+                    if ncoeff < coeff and next_point_alt > point_alt and next_point_alt > nnext_point_alt :
+                        nnext_point_id = nnext_point.attribute('P_id')
+                        list_points.append(nnext_point_id)
+                        nature = nnnature
+                    else :
+                        next_point_id = next_point.attribute('P_id')
+                        list_points.append(next_point_id)
+                        nature = nnature
+                else :
+                    next_point_id = next_point.attribute('P_id')
+                    list_points.append(next_point_id)
+                    nature = nnature
+        print line,list_points
+        for i,point_id in enumerate(list_points) :
+            expre = QgsExpression('L_id = %s AND P_id= %s'%(line, str(point_id)))
+            reque = QgsFeatureRequest(expre)
+            point_it = point_layer.getFeatures(reque)
+            point = next(point_it)
+            point_it = None
             nature = point.attribute('nature')
             if nature != 'end' :
                 next_point = None
                 point_id = point.attribute('P_id')
-                next_id = int(point_id) + 1
+                next_id = list_points[i+1]
                 expre = QgsExpression('L_id = %s AND P_id= %s'%(line, str(next_id)))
                 reque = QgsFeatureRequest(expre)
                 next_point_it = point_layer.getFeatures(reque)
 
                 try :
                     next_point = next(next_point_it)
+                    next_point_it = None
                 except StopIteration:
                     pass
                 if next_point != None :
@@ -725,7 +1266,7 @@ def advanced_algo(point_layer,DEM_layer,tracks_layer,outpath,nb_edges,method,thr
                     print 'L_id = %s AND P_id= %s'%(line, str(next_id))
                     while end_id == None and f_extent < 5:
                         f_extent+=1
-                        path, beg_list, end_id, last_beg, w, scr = betweenPoint(point, next_point, DEM_layer, outpath, nb_edges, max_slope, method, threshold, x_res, y_res, f_extent, last_beg)
+                        path, beg_list, end_id, last_beg, w, scr = betweenPoint(point, next_point,point_layer, DEM_layer, tracks_layer, line, outpath, nb_edges, max_slope, method, threshold, x_res, y_res, f_extent, last_beg)
 
                     if end_id != None :
                         leastCostPath = get_adv_lcp(beg_list,path,end_id, method,threshold)
