@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>293</width>
-    <height>340</height>
+    <width>320</width>
+    <height>367</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -158,7 +158,7 @@
         <property name="geometry">
          <rect>
           <x>180</x>
-          <y>240</y>
+          <y>270</y>
           <width>75</width>
           <height>23</height>
          </rect>
@@ -298,6 +298,42 @@
         </property>
         <property name="value">
          <number>10</number>
+        </property>
+       </widget>
+       <widget class="QComboBox" name="MaskInput">
+        <property name="geometry">
+         <rect>
+          <x>110</x>
+          <y>240</y>
+          <width>111</width>
+          <height>22</height>
+         </rect>
+        </property>
+       </widget>
+       <widget class="QPushButton" name="MaskActButton">
+        <property name="geometry">
+         <rect>
+          <x>230</x>
+          <y>240</y>
+          <width>31</width>
+          <height>23</height>
+         </rect>
+        </property>
+        <property name="text">
+         <string>↺</string>
+        </property>
+       </widget>
+       <widget class="QLabel" name="MaskLabel">
+        <property name="geometry">
+         <rect>
+          <x>10</x>
+          <y>240</y>
+          <width>91</width>
+          <height>21</height>
+         </rect>
+        </property>
+        <property name="text">
+         <string>Mask layer :</string>
         </property>
        </widget>
       </widget>

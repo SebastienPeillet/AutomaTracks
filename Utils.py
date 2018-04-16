@@ -81,9 +81,9 @@ class NodeGraph():
     def add_edge(self,node) :
         self.edges.append(node)
         
-def imp_raster(dem_clip):
+def imp_raster(clip):
     # Open the input raster to retrieve values in an array
-    data = gdal.Open(dem_clip,1)
+    data = gdal.Open(clip,1)
     proj = data.GetProjection()
     scr = data.GetGeoTransform()
     resolution = scr[1]
@@ -93,7 +93,7 @@ def imp_raster(dem_clip):
     
     return iArray, scr, proj, resolution
 
-def rast_to_adv_graph(rastArray, res, nb_edge, max_slope, method, threshold) :
+def rast_to_adv_graph(rastArray, res, nb_edge, max_slope, method, threshold, maskArray) :
     G= AdvGraph()
     
     [H,W] = rastArray.shape
@@ -228,167 +228,331 @@ def rast_to_adv_graph(rastArray, res, nb_edge, max_slope, method, threshold) :
 
     nb_edge+=1
     
-    #Loop over each pixel again to create slope and length dictionnary    
-    for i in range(0,H) :
-        for j in range(0,W) :
-            nodeBeg = "x"+str(i)+"y"+str(j)
-            nodeBegValue= rastArray[i,j]
-            for index in range(1,nb_edge) :
-                x,y=shift[index]
-                nodeEnd="x"+str(i+x)+"y"+str(j+y)
-                try :
-                    nodeEndValue= rastArray[i+x,j+y]
-                    #Calculate cost on length + addcost based on slope percent
-                    if index in [2,4,6,8] :
-                        length = res
-                    elif index in [1,3,5,7] :
-                        length = res*math.sqrt(2)
-                    elif index in [9,11,13,15,17,19,21,23]:
-                        length = res*math.sqrt(res)
-                    elif index in [10,14,18,22] :
-                        length = 2*res*math.sqrt(2)
-                    elif index in [12,16,20,24] :
-                        length = 2*res
-                    elif index in [25,28,29,32,33,36,37,40] :
-                        length = res*math.sqrt(10)
-                    elif index in [26,27,30,31,34,35,38,39] :
-                        length = res*math.sqrt(13)
-                    else :
-                        length = res*math.sqrt(26)
-                    slope = math.fabs(nodeEndValue-nodeBegValue)/length*100
-                    # #max slope accepted in percent
-                    # max_slope_wanted= 12
-                    # if slope <= max_slope_wanted :
-                    G.add_info(nodeBeg,nodeEnd,length,slope)
-                except IndexError :
-                    continue
-    
-    ind=0
-    nodes_dict={}
-    for i in range(0,H) :
-        for j in range(0,W) :
-            nodeBeg = "x"+str(i)+"y"+str(j)
-            for index in range(1,nb_edge) :
-                x,y=shift[index]
-                nodeEnd="x"+str(i+x)+"y"+str(j+y)
-                if (i+x) > 0 and (j+y) > 0 and (i+x) < H and (j+y) < W  :
+    if maskArray == None :
+        #Loop over each pixel again to create slope and length dictionnary    
+        for i in range(0,H) :
+            for j in range(0,W) :
+                nodeBeg = "x"+str(i)+"y"+str(j)
+                nodeBegValue= rastArray[i,j]
+                for index in range(1,nb_edge) :
+                    x,y=shift[index]
+                    nodeEnd="x"+str(i+x)+"y"+str(j+y)
                     try :
-                        length = G.length[(nodeBeg, nodeEnd)]
-                        slope = G.slope[(nodeBeg, nodeEnd)]
-                        if slope <= max_slope :
-                            id = nodeBeg+'|'+nodeEnd
-                            coords_list = slope_calc_coord[index]
-                            c_slope_list=[]
-                            c_slope = None
-                            count = 0
-                            
-                            for coords in coords_list :
-                                lx,ly = coords[0]
-                                nodeLeft="x"+str(i+lx)+"y"+str(j+ly)
-                                rx,ry = coords[1]
-                                nodeRight="x"+str(i+rx)+"y"+str(j+ry)
-                                if (i+lx) > 0 and (j+ly) > 0 and (i+rx) > 0 and (j+ry) > 0 and\
-                                    (i+lx) < H and (j+ly) < W and (i+rx) < H and (j+ry) < W :
-                                    c_slope_list.append(G.slope[nodeLeft,nodeRight])
-                                count+=1
-                            if len(c_slope_list) == count and count != 0 :
-                                c_slope = sum(c_slope_list) / len(c_slope_list)
-                                
-                                pmax = 25
-                                pmin = 60
-                                larg = 4
-                                
-                                if c_slope < pmax :
-                                    assise = larg/2
-                                else :
-                                    assise = min(round((larg / 2*(1 + ((c_slope - pmax)/(pmin - pmax))**2)),2),larg)
-                                talus  = assise**2 *larg * (c_slope/100) / 2 /(larg - (c_slope/100))
-                                addcost = talus
-                                
-                                cost = length * addcost + length * 1
-                                G.add_nodes(id, nodeBeg, nodeEnd, cost)
-                                nodes_dict[id] = ind
-                                ind+=1
+                        nodeEndValue= rastArray[i+x,j+y]
+                        #Calculate cost on length + addcost based on slope percent
+                        if index in [2,4,6,8] :
+                            length = res
+                        elif index in [1,3,5,7] :
+                            length = res*math.sqrt(2)
+                        elif index in [9,11,13,15,17,19,21,23]:
+                            length = res*math.sqrt(res)
+                        elif index in [10,14,18,22] :
+                            length = 2*res*math.sqrt(2)
+                        elif index in [12,16,20,24] :
+                            length = 2*res
+                        elif index in [25,28,29,32,33,36,37,40] :
+                            length = res*math.sqrt(10)
+                        elif index in [26,27,30,31,34,35,38,39] :
+                            length = res*math.sqrt(13)
+                        else :
+                            length = res*math.sqrt(26)
+                        slope = math.fabs(nodeEndValue-nodeBegValue)/length*100
+                        # #max slope accepted in percent
+                        # max_slope_wanted= 12
+                        # if slope <= max_slope_wanted :
+                        G.add_info(nodeBeg,nodeEnd,length,slope)
                     except IndexError :
                         continue
-    nodes = G.nodes
-    
-    for node1 in nodes :
-        x2,y2 = id_to_coord(node1.end)
-        id_pt1 = "x"+str(x2)+"y"+str(y2)
-        list_ind = []
-        for index in range(1,nb_edge) :
-            i,j = shift[index]
-            if (i+x2) > 0 and (j+y2) > 0 and (i+x2) < H and (j+y2) < W :
-                x3,y3 = (x2+i,y2+j)
-                id_pt2 = "x"+str(x3)+"y"+str(y3)
-                id_next = id_pt1+'|'+id_pt2
-                if id_next in nodes_dict :
-                    list_ind.append(nodes_dict[id_next])
-                
-        for edge in list_ind :
-            node2 = nodes[edge]
-            if node1.id != node2.id and node1.end == node2.beg :                            
-                if method == 'r' :
-                    x1,y1 = id_to_coord(node1.beg)
-                    x2,y2 = id_to_coord(node1.end)
-                    x3,y3 = id_to_coord(node2.end)
-                    az1 = math.degrees(math.atan2(x2 - x1, y2 - y1))
-                    az2 = math.degrees(math.atan2(x3 - x2, y3 - y2))
+        
+        ind=0
+        nodes_dict={}
+        for i in range(0,H) :
+            for j in range(0,W) :
+                nodeBeg = "x"+str(i)+"y"+str(j)
+                for index in range(1,nb_edge) :
+                    x,y=shift[index]
+                    nodeEnd="x"+str(i+x)+"y"+str(j+y)
+                    if (i+x) > 0 and (j+y) > 0 and (i+x) < H and (j+y) < W  :
+                        try :
+                            length = G.length[(nodeBeg, nodeEnd)]
+                            slope = G.slope[(nodeBeg, nodeEnd)]
+                            if slope <= max_slope :
+                                id = nodeBeg+'|'+nodeEnd
+                                coords_list = slope_calc_coord[index]
+                                c_slope_list=[]
+                                c_slope = None
+                                count = 0
+                                
+                                for coords in coords_list :
+                                    lx,ly = coords[0]
+                                    nodeLeft="x"+str(i+lx)+"y"+str(j+ly)
+                                    rx,ry = coords[1]
+                                    nodeRight="x"+str(i+rx)+"y"+str(j+ry)
+                                    if (i+lx) > 0 and (j+ly) > 0 and (i+rx) > 0 and (j+ry) > 0 and\
+                                        (i+lx) < H and (j+ly) < W and (i+rx) < H and (j+ry) < W :
+                                        c_slope_list.append(G.slope[nodeLeft,nodeRight])
+                                    count+=1
+                                if len(c_slope_list) == count and count != 0 :
+                                    c_slope = sum(c_slope_list) / len(c_slope_list)
+                                    
+                                    pmax = 25
+                                    pmin = 60
+                                    larg = 4
+                                    
+                                    if c_slope < pmax :
+                                        assise = larg/2
+                                    else :
+                                        assise = min(round((larg / 2*(1 + ((c_slope - pmax)/(pmin - pmax))**2)),2),larg)
+                                    talus  = assise**2 *larg * (c_slope/100) / 2 /(larg - (c_slope/100))
+                                    addcost = talus
+                                    
+                                    cost = length * addcost + length * 1
+                                    G.add_nodes(id, nodeBeg, nodeEnd, cost)
+                                    nodes_dict[id] = ind
+                                    ind+=1
+                        except IndexError :
+                            continue
+        nodes = G.nodes
+        
+        for node1 in nodes :
+            x2,y2 = id_to_coord(node1.end)
+            id_pt1 = "x"+str(x2)+"y"+str(y2)
+            list_ind = []
+            for index in range(1,nb_edge) :
+                i,j = shift[index]
+                if (i+x2) > 0 and (j+y2) > 0 and (i+x2) < H and (j+y2) < W :
+                    x3,y3 = (x2+i,y2+j)
+                    id_pt2 = "x"+str(x3)+"y"+str(y3)
+                    id_next = id_pt1+'|'+id_pt2
+                    if id_next in nodes_dict :
+                        list_ind.append(nodes_dict[id_next])
                     
-                    if min(x1,x3) <= x2 <= max(x1,x3) and min(y1,y3) <= y2 <= max(y1,y3):
-                    
-                        mag_v1 = math.sqrt((x1-x2)**2+(y1-y2)**2)
-                        mag_v2 = math.sqrt((x3-x2)**2+(y3-y2)**2)
+            for edge in list_ind :
+                node2 = nodes[edge]
+                if node1.id != node2.id and node1.end == node2.beg :                            
+                    if method == 'r' :
+                        x1,y1 = id_to_coord(node1.beg)
+                        x2,y2 = id_to_coord(node1.end)
+                        x3,y3 = id_to_coord(node2.end)
+                        az1 = math.degrees(math.atan2(x2 - x1, y2 - y1))
+                        az2 = math.degrees(math.atan2(x3 - x2, y3 - y2))
                         
-                        if mag_v1 < mag_v2 :
+                        if min(x1,x3) <= x2 <= max(x1,x3) and min(y1,y3) <= y2 <= max(y1,y3):
+                        
+                            mag_v1 = math.sqrt((x1-x2)**2+(y1-y2)**2)
+                            mag_v2 = math.sqrt((x3-x2)**2+(y3-y2)**2)
+                            
+                            if mag_v1 < mag_v2 :
+                                x_v2 , y_v2 = (x3 - x2, y3 - y2)
+                                x3,y3 = x2+x_v2/mag_v2*mag_v1 ,y2+y_v2/mag_v2*mag_v1
+                            elif mag_v2 < mag_v1 :
+                                x_v2 , y_v2 = (x1 - x2, y1 - y2)
+                                x1,y1 = x2+x_v2/mag_v1*mag_v2 ,y2+y_v2/mag_v1*mag_v2
+                                
+                            x_v1 , y_v1 = (x2 - x1, y2 - y1)
+                            x_v1_ort , y_v1_ort = y_v1 , -x_v1
                             x_v2 , y_v2 = (x3 - x2, y3 - y2)
-                            x3,y3 = x2+x_v2/mag_v2*mag_v1 ,y2+y_v2/mag_v2*mag_v1
-                        elif mag_v2 < mag_v1 :
-                            x_v2 , y_v2 = (x1 - x2, y1 - y2)
-                            x1,y1 = x2+x_v2/mag_v1*mag_v2 ,y2+y_v2/mag_v1*mag_v2
+                            x_v2_ort , y_v2_ort = y_v2 , -x_v2
                             
-                        x_v1 , y_v1 = (x2 - x1, y2 - y1)
-                        x_v1_ort , y_v1_ort = y_v1 , -x_v1
-                        x_v2 , y_v2 = (x3 - x2, y3 - y2)
-                        x_v2_ort , y_v2_ort = y_v2 , -x_v2
-                        
-                        c_v1_ort = y_v1_ort*x1+(-x_v1_ort)*y1
-                        c_v1_ort = -c_v1_ort
-                        c_v2_ort = y_v2_ort*x3+(-x_v2_ort)*y3
-                        c_v2_ort = -c_v2_ort
-                        
-                        e = [-y_v1_ort,x_v1_ort,c_v1_ort]
-                        f = [-y_v2_ort,x_v2_ort,c_v2_ort]
-                        x4 , y4, colineaire = equationResolve(e,f)
+                            c_v1_ort = y_v1_ort*x1+(-x_v1_ort)*y1
+                            c_v1_ort = -c_v1_ort
+                            c_v2_ort = y_v2_ort*x3+(-x_v2_ort)*y3
+                            c_v2_ort = -c_v2_ort
+                            
+                            e = [-y_v1_ort,x_v1_ort,c_v1_ort]
+                            f = [-y_v2_ort,x_v2_ort,c_v2_ort]
+                            x4 , y4, colineaire = equationResolve(e,f)
 
-                        if (x4 != None and y4 != None) :
-                            dist1 = math.sqrt((x1-x4)**2+(y1-y4)**2)*5
+                            if (x4 != None and y4 != None) :
+                                dist1 = math.sqrt((x1-x4)**2+(y1-y4)**2)*5
+                                
+                                if dist1 >= threshold :
+                                    node1.add_edge(node2)
                             
-                            if dist1 >= threshold :
+                            elif colineaire == True :
                                 node1.add_edge(node2)
-                        
-                        elif colineaire == True :
+                    
+                    if method == 'a' :
+                        x1,y1 = id_to_coord(node1.beg)
+                        x2,y2 = id_to_coord(node1.end)
+                        x3,y3 = id_to_coord(node2.end)
+                        az1 = math.degrees(math.atan2(x2 - x1, y2 - y1))
+                        az2 = math.degrees(math.atan2(x3 - x2, y3 - y2))
+                        if az1 < 0 and az2 > 0 :
+                            angle = math.fabs(az1)+az2
+                        elif az1 > 0 and az2 < 0 :
+                            angle = math.fabs(az2)+az1
+                        else :
+                            angle = math.fabs(az1-az2)
+                        if angle < -180 :
+                            angle = angle + 360
+                        if angle > 180 :
+                            angle = angle - 360
+                        if math.fabs(angle) <= threshold :
                             node1.add_edge(node2)
-                
-                if method == 'a' :
-                    x1,y1 = id_to_coord(node1.beg)
-                    x2,y2 = id_to_coord(node1.end)
-                    x3,y3 = id_to_coord(node2.end)
-                    az1 = math.degrees(math.atan2(x2 - x1, y2 - y1))
-                    az2 = math.degrees(math.atan2(x3 - x2, y3 - y2))
-                    if az1 < 0 and az2 > 0 :
-                        angle = math.fabs(az1)+az2
-                    elif az1 > 0 and az2 < 0 :
-                        angle = math.fabs(az2)+az1
-                    else :
-                        angle = math.fabs(az1-az2)
-                    if angle < -180 :
-                        angle = angle + 360
-                    if angle > 180 :
-                        angle = angle - 360
-                    if math.fabs(angle) <= threshold :
-                        node1.add_edge(node2)
+    else:
+        #Loop over each pixel again to create slope and length dictionnary    
+          for i in range(0,H) :
+              for j in range(0,W) :
+                  nodeBeg = "x"+str(i)+"y"+str(j)
+                  nodeBegValue= rastArray[i,j]
+                  for index in range(1,nb_edge) :
+                      x,y=shift[index]
+                      nodeEnd="x"+str(i+x)+"y"+str(j+y)
+                      try :
+                          nodeEndValue= rastArray[i+x,j+y]
+                          #Calculate cost on length + addcost based on slope percent
+                          if index in [2,4,6,8] :
+                              length = res
+                          elif index in [1,3,5,7] :
+                              length = res*math.sqrt(2)
+                          elif index in [9,11,13,15,17,19,21,23]:
+                              length = res*math.sqrt(res)
+                          elif index in [10,14,18,22] :
+                              length = 2*res*math.sqrt(2)
+                          elif index in [12,16,20,24] :
+                              length = 2*res
+                          elif index in [25,28,29,32,33,36,37,40] :
+                              length = res*math.sqrt(10)
+                          elif index in [26,27,30,31,34,35,38,39] :
+                              length = res*math.sqrt(13)
+                          else :
+                              length = res*math.sqrt(26)
+                          slope = math.fabs(nodeEndValue-nodeBegValue)/length*100
+                          # #max slope accepted in percent
+                          # max_slope_wanted= 12
+                          # if slope <= max_slope_wanted :
+                          G.add_info(nodeBeg,nodeEnd,length,slope)
+                      except IndexError :
+                          continue
+          
+          ind=0
+          nodes_dict={}
+          for i in range(0,H) :
+              for j in range(0,W) :
+                  nodeBeg = "x"+str(i)+"y"+str(j)
+                  for index in range(1,nb_edge) :
+                      x,y=shift[index]
+                      nodeEnd="x"+str(i+x)+"y"+str(j+y)
+                      if (i+x) > 0 and (j+y) > 0 and (i+x) < H and (j+y) < W :
+                          try :
+                              if maskArray[i,j] != 0 and maskArray[i+x,j+y] != 0 :
+                                  length = G.length[(nodeBeg, nodeEnd)]
+                                  slope = G.slope[(nodeBeg, nodeEnd)]
+                                  if slope <= max_slope :
+                                      id = nodeBeg+'|'+nodeEnd
+                                      coords_list = slope_calc_coord[index]
+                                      c_slope_list=[]
+                                      c_slope = None
+                                      count = 0
+                                      
+                                      for coords in coords_list :
+                                          lx,ly = coords[0]
+                                          nodeLeft="x"+str(i+lx)+"y"+str(j+ly)
+                                          rx,ry = coords[1]
+                                          nodeRight="x"+str(i+rx)+"y"+str(j+ry)
+                                          if (i+lx) > 0 and (j+ly) > 0 and (i+rx) > 0 and (j+ry) > 0 and\
+                                              (i+lx) < H and (j+ly) < W and (i+rx) < H and (j+ry) < W :
+                                              c_slope_list.append(G.slope[nodeLeft,nodeRight])
+                                          count+=1
+                                      if len(c_slope_list) == count and count != 0 :
+                                          c_slope = sum(c_slope_list) / len(c_slope_list)
+                                          
+                                          pmax = 25
+                                          pmin = 60
+                                          larg = 4
+                                          
+                                          if c_slope < pmax :
+                                              assise = larg/2
+                                          else :
+                                              assise = min(round((larg / 2*(1 + ((c_slope - pmax)/(pmin - pmax))**2)),2),larg)
+                                          talus  = assise**2 *larg * (c_slope/100) / 2 /(larg - (c_slope/100))
+                                          addcost = talus
+                                          
+                                          cost = length * addcost + length * 1
+                                          G.add_nodes(id, nodeBeg, nodeEnd, cost)
+                                          nodes_dict[id] = ind
+                                          ind+=1
+                          except IndexError :
+                              continue
+          nodes = G.nodes
+          
+          for node1 in nodes :
+              x2,y2 = id_to_coord(node1.end)
+              id_pt1 = "x"+str(x2)+"y"+str(y2)
+              list_ind = []
+              for index in range(1,nb_edge) :
+                  i,j = shift[index]
+                  if (i+x2) > 0 and (j+y2) > 0 and (i+x2) < H and (j+y2) < W :
+                      x3,y3 = (x2+i,y2+j)
+                      id_pt2 = "x"+str(x3)+"y"+str(y3)
+                      id_next = id_pt1+'|'+id_pt2
+                      if id_next in nodes_dict :
+                          list_ind.append(nodes_dict[id_next])
+                      
+              for edge in list_ind :
+                  node2 = nodes[edge]
+                  if node1.id != node2.id and node1.end == node2.beg :                            
+                      if method == 'r' :
+                          x1,y1 = id_to_coord(node1.beg)
+                          x2,y2 = id_to_coord(node1.end)
+                          x3,y3 = id_to_coord(node2.end)
+                          az1 = math.degrees(math.atan2(x2 - x1, y2 - y1))
+                          az2 = math.degrees(math.atan2(x3 - x2, y3 - y2))
+                          
+                          if min(x1,x3) <= x2 <= max(x1,x3) and min(y1,y3) <= y2 <= max(y1,y3):
+                          
+                              mag_v1 = math.sqrt((x1-x2)**2+(y1-y2)**2)
+                              mag_v2 = math.sqrt((x3-x2)**2+(y3-y2)**2)
+                              
+                              if mag_v1 < mag_v2 :
+                                  x_v2 , y_v2 = (x3 - x2, y3 - y2)
+                                  x3,y3 = x2+x_v2/mag_v2*mag_v1 ,y2+y_v2/mag_v2*mag_v1
+                              elif mag_v2 < mag_v1 :
+                                  x_v2 , y_v2 = (x1 - x2, y1 - y2)
+                                  x1,y1 = x2+x_v2/mag_v1*mag_v2 ,y2+y_v2/mag_v1*mag_v2
+                                  
+                              x_v1 , y_v1 = (x2 - x1, y2 - y1)
+                              x_v1_ort , y_v1_ort = y_v1 , -x_v1
+                              x_v2 , y_v2 = (x3 - x2, y3 - y2)
+                              x_v2_ort , y_v2_ort = y_v2 , -x_v2
+                              
+                              c_v1_ort = y_v1_ort*x1+(-x_v1_ort)*y1
+                              c_v1_ort = -c_v1_ort
+                              c_v2_ort = y_v2_ort*x3+(-x_v2_ort)*y3
+                              c_v2_ort = -c_v2_ort
+                              
+                              e = [-y_v1_ort,x_v1_ort,c_v1_ort]
+                              f = [-y_v2_ort,x_v2_ort,c_v2_ort]
+                              x4 , y4, colineaire = equationResolve(e,f)
+
+                              if (x4 != None and y4 != None) :
+                                  dist1 = math.sqrt((x1-x4)**2+(y1-y4)**2)*5
+                                  
+                                  if dist1 >= threshold :
+                                      node1.add_edge(node2)
+                              
+                              elif colineaire == True :
+                                  node1.add_edge(node2)
+                      
+                      if method == 'a' :
+                          x1,y1 = id_to_coord(node1.beg)
+                          x2,y2 = id_to_coord(node1.end)
+                          x3,y3 = id_to_coord(node2.end)
+                          az1 = math.degrees(math.atan2(x2 - x1, y2 - y1))
+                          az2 = math.degrees(math.atan2(x3 - x2, y3 - y2))
+                          if az1 < 0 and az2 > 0 :
+                              angle = math.fabs(az1)+az2
+                          elif az1 > 0 and az2 < 0 :
+                              angle = math.fabs(az2)+az1
+                          else :
+                              angle = math.fabs(az1-az2)
+                          if angle < -180 :
+                              angle = angle + 360
+                          if angle > 180 :
+                              angle = angle - 360
+                          if math.fabs(angle) <= threshold :
+                              node1.add_edge(node2)
     return G
 
 def adv_dijkstra(graph, init, last, threshold, end_id, method, usefull_beg_tracks, usefull_end_tracks) :            
@@ -599,6 +763,8 @@ def adv_dijkstra(graph, init, last, threshold, end_id, method, usefull_beg_track
                             del_ids.append(node.id)
                     elif colineaire == True :
                         end_ids.append(node.end)
+                    else :
+                        del_ids.append(node.id)
             elif method == 'a' :
                 x,y = usefull_end_tracks[node.end]
                 x2,y2 = id_to_coord(node.end)
@@ -703,7 +869,7 @@ def ids_to_coord(lcp,gt):
     #return the list of end point with x,y map coordinates
     return coord_list
 
-def create_ridge(out_layer,lcp,id_line,point_id, weight) :
+def create_ridge(out_layer,lcp,id_line,point_id, nature, weight) :
     out_layer.startEditing()
     feat = QgsFeature(out_layer.pendingFields())
 
@@ -716,7 +882,7 @@ def create_ridge(out_layer,lcp,id_line,point_id, weight) :
         line.append(pt)
     polyline = QgsGeometry.fromPolyline(line)
     feat.setGeometry(polyline)
-    feat.setAttributes([id_line,point_id,weight])
+    feat.setAttributes([id_line,point_id,nature,weight])
     out_layer.dataProvider().addFeatures([feat])
     out_layer.commitChanges()
 
@@ -807,7 +973,7 @@ def get_adv_lcp(beg_list,path,end_id, method,threshold) :
             leastCostPath.append(pt3)
     else :
         leastCostPath = None
-    return leastCostPath
+    return leastCostPath, act
 
 def getExtent(point_geom, npoint_geom, x_res, y_res, f_extent):
     x1,y1 = point_geom
@@ -816,20 +982,22 @@ def getExtent(point_geom, npoint_geom, x_res, y_res, f_extent):
     dist = math.sqrt(point_geom.sqrDist(npoint_geom))
     mod = (dist/2) % x_res
     dist = (dist/2) - mod + x_res
+    facteur = 3
 
-    xmax = max(x1,x2) + x_res/2 + int(dist) + f_extent * 3 * x_res 
-    xmin = min(x1,x2) - x_res/2 - int(dist) - f_extent * 3 * x_res
-    ymax = max(y1,y2) + y_res/2 + int(dist) + f_extent * 3 * y_res
-    ymin = min(y1,y2) - y_res/2 - int(dist) - f_extent * 3 * y_res
+    xmax = max(x1,x2) + x_res/2 + int(dist) + f_extent * facteur * x_res 
+    xmin = min(x1,x2) - x_res/2 - int(dist) - f_extent * facteur * x_res
+    ymax = max(y1,y2) + y_res/2 + int(dist) + f_extent * facteur * y_res
+    ymin = min(y1,y2) - y_res/2 - int(dist) - f_extent * facteur * y_res
     extent = [xmin, xmax, ymin, ymax]
     return extent
 
-def getClip(DEM_layer, outpath, extent, x_res, y_res):
-    dem_clip = '%s\\tmp' % os.path.dirname(outpath)
+def getClip(DEM_layer, outpath, extent, x_res, y_res, name):
+    name_clip = '%s\\tmp' % os.path.dirname(outpath)
+    name_clip += name
     extent=str(str(extent[0])+','+str(extent[1])+','+str(extent[2])+','+str(extent[3]))
-    processing.runalg('gdalogr:cliprasterbyextent', {'INPUT':DEM_layer.source(),'PROJWIN':extent, 'OUTPUT':dem_clip})
-    dem_clip = dem_clip+'.tif'
-    return dem_clip
+    processing.runalg('gdalogr:cliprasterbyextent', {'INPUT':DEM_layer.source(),'PROJWIN':extent, 'OUTPUT':name_clip})
+    name_clip = name_clip+'.tif'
+    return name_clip
 
 def getUsefullTrack(extent,tracks_layer,line_id,scr,point_layer, in_point):
     nature = in_point.attribute('nature')
@@ -918,13 +1086,18 @@ def map2pixel(point_geom,gt):
     beg_point = "x"+str(px)+"y"+str(py)
     return beg_point
 
-def betweenPoint(point, next_point, point_layer, DEM_layer, tracks_layer, line_id,outpath, nb_edges, max_slope, method, threshold, x_res, y_res, f_extent, last_beg):
+def betweenPoint(point, next_point, point_layer, DEM_layer, tracks_layer, line_id,outpath, nb_edges, max_slope, method, threshold, x_res, y_res, f_extent, last_beg, Mask_layer):
     point_geom = point.geometry().asPoint()
     npoint_geom = next_point.geometry().asPoint()
     extent = getExtent(point_geom, npoint_geom, x_res, y_res, f_extent)
-    dem_clip = getClip(DEM_layer, outpath, extent, x_res, y_res)
+    dem_clip = getClip(DEM_layer, outpath, extent, x_res, y_res, '_dem')
+    if Mask_layer != None :
+        mask_clip = getClip(Mask_layer, outpath, extent, x_res, y_res, '_mask')
+        in_array_mask, scr, proj, res = imp_raster(mask_clip)
+    else :
+        in_array_mask = None
     in_array, scr, proj, res = imp_raster(dem_clip)
-    G = rast_to_adv_graph(in_array, res, nb_edges, max_slope, method, threshold)
+    G = rast_to_adv_graph(in_array, res, nb_edges, max_slope, method, threshold, in_array_mask)
     beg_point = map2pixel(point_geom, scr)
     usefull_beg_tracks = getUsefullTrack(extent,tracks_layer,line_id,scr,point_layer,point)
     if next_point.attribute('nature')=='end':
@@ -934,9 +1107,9 @@ def betweenPoint(point, next_point, point_layer, DEM_layer, tracks_layer, line_i
     end_point = map2pixel(npoint_geom, scr)
     path, beg_list, end_id,last_mouv, w = adv_dijkstra(G,beg_point,last_beg,threshold,end_point,method,usefull_beg_tracks,usefull_end_tracks)
 
-    return path, beg_list, end_id, last_mouv, w, scr
+    return path, beg_list, beg_point, end_id, last_mouv, w, scr
 
-def advanced_algo(point_layer,DEM_layer,tracks_layer,outpath,nb_edges,method,threshold,max_slope):
+def advanced_algo(point_layer,DEM_layer,tracks_layer,outpath,nb_edges,method,threshold,max_slope, Mask_layer):
     crs = tracks_layer.crs().toWkt()
     #resolution raster
     x_res = DEM_layer.rasterUnitsPerPixelX()
@@ -951,6 +1124,7 @@ def advanced_algo(point_layer,DEM_layer,tracks_layer,outpath,nb_edges,method,thr
 
     inter_count = 0
     #loop the points for each line
+    line_to_change = {}
     for line in lines_list :
         expr = QgsExpression('L_id = %s'%line)
         req = QgsFeatureRequest(expr)
@@ -992,7 +1166,7 @@ def advanced_algo(point_layer,DEM_layer,tracks_layer,outpath,nb_edges,method,thr
                     nnext_point_alt = DEM_layer.dataProvider().identify(nnext_point_geom, QgsRaster.IdentifyFormatValue).results()[1]
                     length = round(math.sqrt(point_geom.sqrDist(nnext_point_geom)), 3)
                     ncoeff = math.fabs(point_alt-nnext_point_alt)/length
-                    if ncoeff < coeff:
+                    if ncoeff < coeff and next_point_alt > point_alt and next_point_alt > nnext_point_alt:
                         nnext_point_id = nnext_point.attribute('P_id')
                         list_points.append(nnext_point_id)
                         nature = nnnature
@@ -1017,6 +1191,7 @@ def advanced_algo(point_layer,DEM_layer,tracks_layer,outpath,nb_edges,method,thr
                     next_point_id = next_point.attribute('P_id')
                     list_points.append(next_point_id)
                     nature = nnature
+                #if previous point following actual point
                 elif (int(point_id) - int(list_points[-2])) == 1 :
                     expre = QgsExpression('L_id = %s AND P_id= %s'%(line, str(list_points[-2])))
                     reque = QgsFeatureRequest(expre)
@@ -1062,9 +1237,9 @@ def advanced_algo(point_layer,DEM_layer,tracks_layer,outpath,nb_edges,method,thr
                                             list_points.append(next_point_id)
                                             nature = nnature
                                         elif best == pcoeff:
-                                            previous_point_id = previous_point.attribute('P_id')
+                                            next_point_id = next_point.attribute('P_id')
                                             del list_points[-1]
-                                            list_points.append(previous_point_id)
+                                            list_points.append(next_point_id)
                                             nature = nnature
                                         else:
                                             next_point_id = next_point.attribute('P_id')
@@ -1254,27 +1429,63 @@ def advanced_algo(point_layer,DEM_layer,tracks_layer,outpath,nb_edges,method,thr
                 expre = QgsExpression('L_id = %s AND P_id= %s'%(line, str(next_id)))
                 reque = QgsFeatureRequest(expre)
                 next_point_it = point_layer.getFeatures(reque)
-
                 try :
                     next_point = next(next_point_it)
+                    next_nature = next_point.attribute('nature')
                     next_point_it = None
                 except StopIteration:
                     pass
                 if next_point != None :
-                    f_extent = -1
+                    f_extent = 2
                     end_id = None
                     print 'L_id = %s AND P_id= %s'%(line, str(next_id))
                     while end_id == None and f_extent < 5:
                         f_extent+=1
-                        path, beg_list, end_id, last_beg, w, scr = betweenPoint(point, next_point,point_layer, DEM_layer, tracks_layer, line, outpath, nb_edges, max_slope, method, threshold, x_res, y_res, f_extent, last_beg)
+                        path, beg_list, beg_point, end_id, last_beg, w, scr = betweenPoint(point, next_point, point_layer, DEM_layer, tracks_layer, line, outpath, nb_edges, max_slope, method, threshold, x_res, y_res, f_extent, last_beg, Mask_layer)
 
                     if end_id != None :
-                        leastCostPath = get_adv_lcp(beg_list,path,end_id, method,threshold)
+                        leastCostPath, act_beg = get_adv_lcp(beg_list, path, end_id, method,threshold)
                         
                         coord_list = ids_to_coord(leastCostPath,scr)
                         end_pt = leastCostPath[0] 
-                        create_ridge(tracks_layer,coord_list,line,point_id,w)
-                        expr = QgsExpression('L_id = %s AND P_id= %s'%(line, str(point_id)))
+                        create_ridge(tracks_layer,coord_list,line,next_id,next_nature,w)
+                        act_beg_pt2, act_beg_pt1 = act_beg.split('|')
+                        if act_beg_pt2 != beg_point :
+                            expr = QgsExpression('L_id = %s AND P_id= %s'%(line, str(next_id)))
+                            req = QgsFeatureRequest(expr)
+                            last_line_it = tracks_layer.getFeatures(req)
+                            try :
+                                last_line = next(last_line_it)
+                                last_line_it = None
+                                first_point = last_line.geometry().asPolyline()[-1]
+                                pt_geom = QgsGeometry().fromPoint(first_point).buffer(1,4)
+                                feat_prev_it = tracks_layer.getFeatures(QgsFeatureRequest().setFilterRect(pt_geom.boundingBox()))
+                                for f_poly in feat_prev_it:
+                                    if f_poly.attribute("L_id") == str(line) and f_poly.attribute("P_id") != str(next_id) :
+                                        f_poly_geom = f_poly.geometry().asPolyline()
+                                        for i,f_pt in enumerate(f_poly_geom):
+                                            if f_pt == first_point:
+                                                rm_id = f_poly.id()
+                                                attr = f_poly.attributes()
+                                                ind = i
+                                        new_feat = QgsFeature(tracks_layer.pendingFields())
+                                        new_line = f_poly_geom[ind:]
+                                        new_geom = QgsGeometry().fromPolyline(new_line)
+                                        new_feat.setGeometry(new_geom)
+                                        new_feat.setAttributes(attr)
+                                        tracks_layer.startEditing()
+                                        tracks_layer.dataProvider().deleteFeatures([rm_id])
+                                        tracks_layer.dataProvider().addFeatures([new_feat])
+                                        tracks_layer.commitChanges()
+                                    elif f_poly.attribute("L_id") != str(line) :
+                                        if f_poly.attribute("L_id") in line_to_change.keys() :
+                                            line_to_change[f_poly.attribute("L_id")].append([line,next_id])
+                                        else :
+                                            line_to_change[f_poly.attribute("L_id")]=[[line,next_id]]
+                            except StopIteration:
+                                pass
+
+                        expr = QgsExpression('L_id = %s AND P_id= %s'%(line, str(next_id)))
                         req = QgsFeatureRequest(expr)
                         last_line_it = tracks_layer.getFeatures(req)
                         try :
@@ -1338,66 +1549,143 @@ def advanced_algo(point_layer,DEM_layer,tracks_layer,outpath,nb_edges,method,thr
 
                             if commun == True :
                                 attr_last_line = last_line.attributes()
-                                for i, pt_index in enumerate(list_commun):
-                                    if list_commun[0] == list_commun[-1] :
-                                        geom_lin = last_geom_p[0:list_commun[0]]
-                                        if geom_lin[0] not in geom_cros_e and geom_lin[-1] not in geom_cros_e and (geom_lin[0] in last_geom_e or geom_lin[-1] in last_geom_e)  :
-                                            lin = QgsFeature(tracks_layer.pendingFields())
-                                            lin.setAttributes(attr_last_line)
-                                            lin.setGeometry(QgsGeometry().fromPolyline(geom_lin))
-                                            tracks_layer.startEditing()
-                                            tracks_layer.dataProvider().addFeatures([lin])
-                                            tracks_layer.commitChanges()
-                                        geom_lin = last_geom_p[list_commun[0]:-1]
-                                        if geom_lin[0] not in geom_cros_e and geom_lin[-1] not in geom_cros_e and (geom_lin[0] in last_geom_e or geom_lin[-1] in last_geom_e)  :
-                                            lin = QgsFeature(tracks_layer.pendingFields())
-                                            lin.setAttributes(attr_last_line)
-                                            lin.setGeometry(QgsGeometry().fromPolyline(geom_lin))
-                                            tracks_layer.startEditing()
-                                            tracks_layer.dataProvider().addFeatures([lin])
-                                            tracks_layer.commitChanges()
-                                    elif i == 0 :
-                                        geom_lin = last_geom_p[0:pt_index]
-                                        if geom_lin[0] not in geom_cros_e and geom_lin[-1] not in geom_cros_e and (geom_lin[0] in last_geom_e or geom_lin[-1] in last_geom_e)  :
-                                            lin = QgsFeature(tracks_layer.pendingFields())
-                                            lin.setAttributes(attr_last_line)
-                                            lin.setGeometry(QgsGeometry().fromPolyline(geom_lin))
-                                            tracks_layer.startEditing()
-                                            tracks_layer.dataProvider().addFeatures([lin])
-                                            tracks_layer.commitChanges()
-                                    elif i == len(list_commun)-1 :
-                                        geom_lin = last_geom_p[list_commun[i-1]:pt_index]
-                                        if geom_lin[0] not in geom_cros_e and geom_lin[-1] not in geom_cros_e and (geom_lin[0] in last_geom_e or geom_lin[-1] in last_geom_e)  :
-                                            lin = QgsFeature(tracks_layer.pendingFields())
-                                            lin.setAttributes(attr_last_line)
-                                            lin.setGeometry(QgsGeometry().fromPolyline(geom_lin))
-                                            tracks_layer.startEditing()
-                                            tracks_layer.dataProvider().addFeatures([lin])
-                                            tracks_layer.commitChanges()
-                                        geom_lin = last_geom_p[pt_index:-1]
-                                        if geom_lin[0] not in geom_cros_e and geom_lin[-1] not in geom_cros_e and (geom_lin[0] in last_geom_e or geom_lin[-1] in last_geom_e)  :
-                                            lin = QgsFeature(tracks_layer.pendingFields())
-                                            lin.setAttributes(attr_last_line)
-                                            lin.setGeometry(QgsGeometry().fromPolyline(geom_lin))
-                                            tracks_layer.startEditing()
-                                            tracks_layer.dataProvider().addFeatures([lin])
-                                            tracks_layer.commitChanges()
-                                    else :
-                                        geom_lin = last_geom_p[list_commun[i-1]:pt_index]
-                                        if geom_lin[0] not in geom_cros_e and geom_lin[-1] not in geom_cros_e and (geom_lin[0] in last_geom_e or geom_lin[-1] in last_geom_e)  :
-                                            lin = QgsFeature(tracks_layer.pendingFields())
-                                            lin.setAttributes(attr_last_line)
-                                            lin.setGeometry(QgsGeometry().fromPolyline(geom_lin))
-                                            tracks_layer.startEditing()
-                                            tracks_layer.dataProvider().addFeatures([lin])
-                                            tracks_layer.commitChanges()
+                                if list_commun[0] == list_commun[-1] :
+                                    geom_lin = last_geom_p[0:list_commun[0]]
+                                    if geom_lin[0] not in geom_cros_e and geom_lin[-1] not in geom_cros_e and (geom_lin[0] in last_geom_e or geom_lin[-1] in last_geom_e)  :
+                                        lin = QgsFeature(tracks_layer.pendingFields())
+                                        lin.setAttributes(attr_last_line)
+                                        lin.setGeometry(QgsGeometry().fromPolyline(geom_lin))
+                                        tracks_layer.startEditing()
+                                        tracks_layer.dataProvider().addFeatures([lin])
+                                        tracks_layer.commitChanges()
+                                    geom_lin = last_geom_p[list_commun[0]:]
+                                    if geom_lin[0] not in geom_cros_e and geom_lin[-1] not in geom_cros_e and (geom_lin[0] in last_geom_e or geom_lin[-1] in last_geom_e)  :
+                                        lin = QgsFeature(tracks_layer.pendingFields())
+                                        lin.setAttributes(attr_last_line)
+                                        lin.setGeometry(QgsGeometry().fromPolyline(geom_lin))
+                                        tracks_layer.startEditing()
+                                        tracks_layer.dataProvider().addFeatures([lin])
+                                        tracks_layer.commitChanges()
+                                else :
+                                    pt_index = min(list_commun)
+                                    geom_lin = last_geom_p[0:pt_index]
+                                    if geom_lin[0] not in geom_cros_e and geom_lin[-1] not in geom_cros_e and (geom_lin[0] in last_geom_e or geom_lin[-1] in last_geom_e)  :
+                                        lin = QgsFeature(tracks_layer.pendingFields())
+                                        lin.setAttributes(attr_last_line)
+                                        lin.setGeometry(QgsGeometry().fromPolyline(geom_lin))
+                                        tracks_layer.startEditing()
+                                        tracks_layer.dataProvider().addFeatures([lin])
+                                        tracks_layer.commitChanges()
                                     tracks_layer.startEditing()
                                     tracks_layer.deleteFeatures([last_line.id()])
                                     tracks_layer.commitChanges()
+                                    # for i, pt_index in enumerate(list_commun):
+                                    #     elif i == 0 :
+                                    #         geom_lin = last_geom_p[0:pt_index]
+                                    #         if geom_lin[0] not in geom_cros_e and geom_lin[-1] not in geom_cros_e and (geom_lin[0] in last_geom_e or geom_lin[-1] in last_geom_e)  :
+                                    #             lin = QgsFeature(tracks_layer.pendingFields())
+                                    #             lin.setAttributes(attr_last_line)
+                                    #             lin.setGeometry(QgsGeometry().fromPolyline(geom_lin))
+                                    #             tracks_layer.startEditing()
+                                    #             tracks_layer.dataProvider().addFeatures([lin])
+                                    #             tracks_layer.commitChanges()
+                                    #     elif i == len(list_commun)-1 :
+                                    #         geom_lin = last_geom_p[list_commun[i-1]:pt_index]
+                                    #         if geom_lin[0] not in geom_cros_e and geom_lin[-1] not in geom_cros_e and (geom_lin[0] in last_geom_e or geom_lin[-1] in last_geom_e)  :
+                                    #             lin = QgsFeature(tracks_layer.pendingFields())
+                                    #             lin.setAttributes(attr_last_line)
+                                    #             lin.setGeometry(QgsGeometry().fromPolyline(geom_lin))
+                                    #             tracks_layer.startEditing()
+                                    #             tracks_layer.dataProvider().addFeatures([lin])
+                                    #             tracks_layer.commitChanges()
+                                    #         geom_lin = last_geom_p[pt_index:-1]
+                                    #         if geom_lin[0] not in geom_cros_e and geom_lin[-1] not in geom_cros_e and (geom_lin[0] in last_geom_e or geom_lin[-1] in last_geom_e)  :
+                                    #             lin = QgsFeature(tracks_layer.pendingFields())
+                                    #             lin.setAttributes(attr_last_line)
+                                    #             lin.setGeometry(QgsGeometry().fromPolyline(geom_lin))
+                                    #             tracks_layer.startEditing()
+                                    #             tracks_layer.dataProvider().addFeatures([lin])
+                                    #             tracks_layer.commitChanges()
+                                    #     else :
+                                    #         geom_lin = last_geom_p[list_commun[i-1]:pt_index]
+                                    #         if geom_lin[0] not in geom_cros_e and geom_lin[-1] not in geom_cros_e and (geom_lin[0] in last_geom_e or geom_lin[-1] in last_geom_e)  :
+                                    #             lin = QgsFeature(tracks_layer.pendingFields())
+                                    #             lin.setAttributes(attr_last_line)
+                                    #             lin.setGeometry(QgsGeometry().fromPolyline(geom_lin))
+                                    #             tracks_layer.startEditing()
+                                    #             tracks_layer.dataProvider().addFeatures([lin])
+                                    #             tracks_layer.commitChanges()
+                                    #     tracks_layer.startEditing()
+                                    #     tracks_layer.deleteFeatures([last_line.id()])
+                                    #     tracks_layer.commitChanges()
                                 temp_layer = None
                                 cut_line = None
                         except StopIteration:
                             pass
+    rm_ids=[]
+    print line_to_change
+    for k in line_to_change.keys():
+        expr = QgsExpression("L_id = %s AND nature = 'end'"%(k))
+        req = QgsFeatureRequest(expr)
+        point_feat_it = point_layer.getFeatures(req)
+        point_feat = next(point_feat_it)
+        rect_geom = point_feat.geometry().buffer(1,4).boundingBox()
+        expr = QgsExpression("L_id != %s"%(k))
+        req = QgsFeatureRequest(expr).setFilterRect(rect_geom)
+        line_feat_it = tracks_layer.getFeatures(req)
+        line_feat = None
+        try :
+            line_feat = next(line_feat_it)
+            line_feat_it = None
+        except StopIteration:
+            pass
+        if line_feat == None :
+            int_pts = []
+            for int_line in line_to_change[k] :
+                expr = QgsExpression('L_id = %s AND P_id= %s'%(int_line[0], int_line[1]))
+                req = QgsFeatureRequest(expr)
+                line_it = tracks_layer.getFeatures(req)
+                try :
+                    line = next(line_it)
+                    line_it = None
+                    int_pts.append(line.geometry().asPolyline()[-1])
+                except StopIteration:
+                    pass
+            expr = QgsExpression('L_id = %s'%(k))
+            req = QgsFeatureRequest(expr)
+            line_it = tracks_layer.getFeatures(req)
+            attr = None
+            for f_poly in line_it :
+                f_poly_geom = f_poly.geometry().asPolyline()
+                for i,f_pt in enumerate(f_poly_geom):
+                    if f_pt in int_pts:
+                        if attr == None or (int(f_poly.attribute("P_id")))>int(rm_p_id):
+                            attr = f_poly.attributes()
+                            rm_id = f_poly.id()
+                            rm_p_id = f_poly.attribute("P_id")
+                            ind = i
+            rm_ids.append(rm_id)
+            expr = QgsExpression('L_id = %s AND P_id= %s'%(k, rm_p_id))
+            req = QgsFeatureRequest(expr)
+            rm_ft_it = None
+            rm_ft_it = tracks_layer.getFeatures(req)
+            try :
+                rm_ft = next(rm_ft_it)
+                rm_ft_geom = rm_ft.geometry().asPolyline()
+                new_feat = QgsFeature(tracks_layer.pendingFields())
+                new_line = rm_ft_geom[ind:]
+                new_geom = QgsGeometry().fromPolyline(new_line)
+                new_feat.setGeometry(new_geom)
+                new_feat.setAttributes(attr)
+                tracks_layer.startEditing()
+                tracks_layer.dataProvider().addFeatures([new_feat])
+                tracks_layer.commitChanges()
+            except StopIteration:
+                pass
+    tracks_layer.startEditing()
+    print rm_ids
+    tracks_layer.dataProvider().deleteFeatures(rm_ids)
+    tracks_layer.commitChanges()
 
 def pointChecked(point_layer) :
     pr = point_layer.dataProvider()
@@ -1416,18 +1704,20 @@ def outputFormat(crs, name='Tracks'):
     tracks_layer = QgsVectorLayer('Linestring?crs=' + crs,name,'memory')
     name_L_id = "L_id"
     name_P_id = "P_id"
+    name_nature = "nature"
     name_cost = "cost"
     provider = tracks_layer.dataProvider()
     caps = provider.capabilities()
     if caps & QgsVectorDataProvider.AddAttributes:
         res = provider.addAttributes( [ QgsField(name_L_id, QVariant.String) ,
                                         QgsField(name_P_id, QVariant.String) ,
+                                        QgsField(name_nature, QVariant.String) ,
                                         QgsField(name_cost, QVariant.Double,"double", 5, 1) ] )
         tracks_layer.updateFields()
 
     return tracks_layer
 
-def launchAutomatracks(point_layer, DEM_layer, outpath, nb_edges,method,threshold,max_slope) :
+def launchAutomatracks(point_layer, DEM_layer, outpath, nb_edges,method,threshold,max_slope, Mask_layer) :
     time=Timer()
     time.start()
 
@@ -1454,7 +1744,7 @@ def launchAutomatracks(point_layer, DEM_layer, outpath, nb_edges,method,threshol
         point_format = pointChecked(point_layer)
 
         if point_format == True :
-            advanced_algo(point_layer,DEM_layer,tracks_layer,outpath,int(nb_edges),method,int(threshold),int(max_slope))
+            advanced_algo(point_layer,DEM_layer,tracks_layer,outpath,int(nb_edges),method,int(threshold),int(max_slope), Mask_layer)
 
         time.stop()
         print 'processing Time :'

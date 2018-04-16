@@ -183,6 +183,7 @@ class AutomaTracks:
         self.listVectLayer()
         self.listRastLayer()
         self.dockwidget.DEMActButton.clicked.connect(self.listRastLayer)
+        self.dockwidget.MaskActButton.clicked.connect(self.listRastLayerMask)
         self.dockwidget.PointActButton.clicked.connect(self.listVectLayer)
         self.dockwidget.LaunchButton.clicked.connect(self.launchAutomaTracks)
 
@@ -237,6 +238,25 @@ class AutomaTracks:
             index += 1
         self.dockwidget.DEMInput.addItems(layer_list)
 
+    def listRastLayerMask(self):
+        """List raster inputs for the DEM selection"""
+
+        # clear list and index
+        self.dockwidget.MaskInput.clear()
+        self.dockwidget.MaskInput.clearEditText()
+        self.rast_list = []
+        layers = self.iface.legendInterface().layers()
+        layer_list = []
+        index = 0
+        for layer in layers:
+            if layer.type() == 1:
+                layer_list.append(layer.name())
+                self.rast_list.append(index)
+            index += 1
+        layer_list.append('None')
+        self.rast_list.append(-1)
+        self.dockwidget.MaskInput.addItems(layer_list)
+
     def listVectLayer(self):
         """List line layer for the track selection"""
 
@@ -265,18 +285,26 @@ class AutomaTracks:
         selected_lignes = self.dockwidget.DEMInput.currentIndex()
         DEMLayer = layers[self.rast_list[selected_lignes]]
 
-        #3 Get the output path
+        # 3 Get the mask layer
+        selected_lignes = self.dockwidget.MaskInput.currentIndex()
+        mask_index = self.rast_list[selected_lignes]
+        if mask_index != -1 :
+            MaskLayer = layers[mask_index]
+        else :
+            MaskLayer = None
+
+        #4 Get the output path
         outpath = self.dockwidget.outPathEdit.text()
 
-        # Load raster layer
-        fileName = DEMLayer.publicSource()
-        fileInfo = QFileInfo(fileName)
-        baseName = fileInfo.baseName()
-        # keep raster path
-        pathRaster = os.path.dirname(fileName)
-        dem = QgsRasterLayer(fileName, baseName)
-        if not dem.isValid():
-            print "Layer failed to load!"
+        # # Load raster layer
+        # fileName = DEMLayer.publicSource()
+        # fileInfo = QFileInfo(fileName)
+        # baseName = fileInfo.baseName()
+        # # keep raster path
+        # pathRaster = os.path.dirname(fileName)
+        # dem = QgsRasterLayer(fileName, baseName)
+        # if not dem.isValid():
+        #     print "Layer failed to load!"
 
         try:
             edges = self.dockwidget.EdgesNumGroup.checkedButton().text()
@@ -289,7 +317,7 @@ class AutomaTracks:
             max_slope = self.dockwidget.MaxSlopeSpinBox.value()
         except AttributeError as e:
             print "%s : No edges number or direction option" %e
-        Utils.launchAutomatracks(pointsLayer, DEMLayer, outpath, edges,method,threshold,max_slope)
+        Utils.launchAutomatracks(pointsLayer, DEMLayer, outpath, edges,method,threshold,max_slope, MaskLayer)
 
 
     #---------------------------------------------------------------------------
