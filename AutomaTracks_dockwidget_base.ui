@@ -24,7 +24,7 @@
        </size>
       </property>
       <property name="currentIndex">
-       <number>0</number>
+       <number>1</number>
       </property>
       <widget class="QWidget" name="MainOnglet">
        <attribute name="title">
@@ -341,6 +341,32 @@
        <attribute name="title">
         <string>Pre_tools</string>
        </attribute>
+       <widget class="QPushButton" name="ridgeToPointButton">
+        <property name="geometry">
+         <rect>
+          <x>10</x>
+          <y>10</y>
+          <width>281</width>
+          <height>23</height>
+         </rect>
+        </property>
+        <property name="text">
+         <string>Convert a ridge to point</string>
+        </property>
+       </widget>
+       <widget class="QPushButton" name="reOrderButton">
+        <property name="geometry">
+         <rect>
+          <x>10</x>
+          <y>40</y>
+          <width>281</width>
+          <height>23</height>
+         </rect>
+        </property>
+        <property name="text">
+         <string>Re-order points from a begin point</string>
+        </property>
+       </widget>
       </widget>
      </widget>
     </item>

@@ -33,7 +33,10 @@ import resources
 
 # Import the code for the DockWidget
 from AutomaTracks_dockwidget import AutomaTracksDockWidget
+from reOrder_Dock import reOrderDock
+from ridgeToPoint_Dock import ridgeToPointDock
 import os.path
+
 
 
 class AutomaTracks:
@@ -185,6 +188,8 @@ class AutomaTracks:
         self.dockwidget.DEMActButton.clicked.connect(self.listRastLayer)
         self.dockwidget.MaskActButton.clicked.connect(self.listRastLayerMask)
         self.dockwidget.PointActButton.clicked.connect(self.listVectLayer)
+        self.dockwidget.reOrderButton.clicked.connect(self.reOrderScript)
+        self.dockwidget.ridgeToPointButton.clicked.connect(self.ridgeToPointScript)
         self.dockwidget.LaunchButton.clicked.connect(self.launchAutomaTracks)
 
     #--------------------------------------------------------------------------
@@ -229,14 +234,14 @@ class AutomaTracks:
         self.dockwidget.DEMInput.clearEditText()
         self.rast_list = []
         layers = self.iface.legendInterface().layers()
-        layer_list = []
+        self.rast_layer_list = []
         index = 0
         for layer in layers:
             if layer.type() == 1:
-                layer_list.append(layer.name())
+                self.rast_layer_list.append(layer.name())
                 self.rast_list.append(index)
             index += 1
-        self.dockwidget.DEMInput.addItems(layer_list)
+        self.dockwidget.DEMInput.addItems(self.rast_layer_list)
 
     def listRastLayerMask(self):
         """List raster inputs for the DEM selection"""
@@ -265,15 +270,32 @@ class AutomaTracks:
         self.dockwidget.PointInput.clearEditText()
         self.vect_list = []
         layers = self.iface.legendInterface().layers()
-        layer_list = []
+        self.vect_layer_list = []
         index = 0
         for layer in layers:
             if layer.type() == 0:
                 if layer.geometryType() == 0:
-                    layer_list.append(layer.name())
+                    self.vect_layer_list.append(layer.name())
                     self.vect_list.append(index)
             index += 1
-        self.dockwidget.PointInput.addItems(layer_list)
+        self.dockwidget.PointInput.addItems(self.vect_layer_list)
+
+    def listlineVectLayer(self):
+        """List line layer for the track selection"""
+
+        # clear list and index
+        self.dockwidget.PointInput.clear()
+        self.dockwidget.PointInput.clearEditText()
+        self.line_vect_list = []
+        layers = self.iface.legendInterface().layers()
+        self.line_layer_list = []
+        index = 0
+        for layer in layers:
+            if layer.type() == 0:
+                if layer.geometryType() == 1:
+                    self.line_layer_list.append(layer.name())
+                    self.line_vect_list.append(index)
+            index += 1
 
     def launchAutomaTracks(self):
         """Process path between pairs of point"""
@@ -319,7 +341,17 @@ class AutomaTracks:
             print "%s : No edges number or direction option" %e
         Utils.launchAutomatracks(pointsLayer, DEMLayer, outpath, edges,method,threshold,max_slope, MaskLayer)
 
+    def reOrderScript(self):
+        self.listRastLayer()
+        self.listVectLayer()
+        self.reOrderDock = reOrderDock(self.iface, self.vect_layer_list, self.vect_list)
+        self.reOrderDock.show()
 
+    def ridgeToPointScript(self):
+        self.listRastLayer()
+        self.listlineVectLayer()
+        self.ridgeToPointDock = ridgeToPointDock(self.iface, self.line_layer_list, self.line_vect_list, self.rast_layer_list, self.rast_list)
+        self.ridgeToPointDock.show()
     #---------------------------------------------------------------------------
     def run(self):
         """Run method that loads and starts the plugin"""
