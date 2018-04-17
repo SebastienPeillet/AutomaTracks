@@ -56,7 +56,7 @@
     </rect>
    </property>
    <property name="text">
-    <string>Exutoire layer :</string>
+    <string>Outlet layer :</string>
    </property>
   </widget>
   <widget class="QLineEdit" name="outputEdit">
