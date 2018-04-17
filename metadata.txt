@@ -10,7 +10,7 @@
 name=AutomaTracks
 qgisMinimumVersion=2.14
 description=Automatic tracks with constraint with path point
-version=0.1
+version=1.0
 author=Peillet Sébastien
 email=peillet.seb@gmail.com
 
