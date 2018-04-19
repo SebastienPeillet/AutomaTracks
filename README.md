@@ -1,4 +1,5 @@
-# AutomaTracks
+# AutomaTracks <img src="http://open.geoexmachina.fr/img/article/AM_icon.png"></img>
+
 Automatracks is a Qgis 2.XX plugin to generate least cost path tracks from a point network. Least cost path between two points is calculated with a specific cost function. This function is based on the earthwork that will be necessary to build the tracks, so the main cost is due to cross slope along the tracks.
 
 ## Install

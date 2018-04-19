@@ -31,6 +31,7 @@ tags=vector, raster, topography, graph theory
 homepage=https://github.com/SebastienPeillet/AutomaTracks
 category=Plugins
 icon=icon.png
+#icon modified from an icon made by Freepik from www.flaticon.com
 # experimental flag
 experimental=True
 
