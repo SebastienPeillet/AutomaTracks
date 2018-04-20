@@ -965,7 +965,7 @@ def get_adv_lcp(beg_list,path,end_id, method,threshold) :
                 if weight == None :
                     weight = w_path[1]
                     id = w_path[0]
-                elif path[1] < weight :
+                elif w_path[1] < weight :
                     weight = w_path[1]
                     id = w_path[0]
             act = id
@@ -1106,7 +1106,7 @@ def betweenPoint(point, next_point, point_layer, DEM_layer, tracks_layer, line_i
         usefull_end_tracks = []
     end_point = map2pixel(npoint_geom, scr)
     path, beg_list, end_id,last_mouv, w = adv_dijkstra(G,beg_point,last_beg,threshold,end_point,method,usefull_beg_tracks,usefull_end_tracks)
-
+    G = None
     return path, beg_list, beg_point, end_id, last_mouv, w, scr
 
 def advanced_algo(point_layer,DEM_layer,tracks_layer,outpath,nb_edges,method,threshold,max_slope, Mask_layer):
