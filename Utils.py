@@ -59,11 +59,9 @@ class AdvGraph ():
         self.slope_info=defaultdict(list)
         self.length = {}
         self.slope = {}
-    
     def add_nodes(self, id, beg_id, end_id, cost) :
         node = NodeGraph(id,beg_id, end_id, cost)
         self.nodes.append(node)
-    
     def add_info(self, beg, end, length, slope):
         self.slope_info[beg].append(end)
         self.length[(beg,end)] = length
@@ -77,7 +75,6 @@ class NodeGraph():
         self.cost = cost
         self.cumcost = None
         self.edges = []
-    
     def add_edge(self,node) :
         self.edges.append(node)
         
@@ -87,17 +84,13 @@ def imp_raster(clip):
     proj = data.GetProjection()
     scr = data.GetGeoTransform()
     resolution = scr[1]
-
     band=data.GetRasterBand(1)
     iArray=band.ReadAsArray()
-    
     return iArray, scr, proj, resolution
 
 def rast_to_adv_graph(rastArray, res, nb_edge, max_slope, method, threshold, maskArray) :
     G= AdvGraph()
-    
     [H,W] = rastArray.shape
-    
     #Shifts to get every edges from each nodes. For now, based on 48 direction like :
     #     |   |   |   | 43|   | 42|   |   |   |
     #  ---|---|---|---|---|---|---|---|---|---|---
@@ -120,9 +113,6 @@ def rast_to_adv_graph(rastArray, res, nb_edge, max_slope, method, threshold, mas
     #     |   |   |   |   |   |   |   |   |   |
     #  ---|---|---|---|---|---|---|---|---|---|---
     #     |   |   |   | 46|   | 47|   |   |   |
-
-    
-    
     #          px  py
     shift = [( 0,  0), #0
              (-1,  1), #1
@@ -174,7 +164,6 @@ def rast_to_adv_graph(rastArray, res, nb_edge, max_slope, method, threshold, mas
              ( 5,  1), #47
              ( 1,  5)  #48
              ]
-             
     slope_calc_coord  =    [( 0,  0),                                                                                                       #0
                             ([ [shift[2]  ,  shift[8]] ]),                                                                                  #1
                             ([ [shift[4]  ,  shift[8]] , [shift[3]  ,  shift[1]] ]),                                                        #2
@@ -225,9 +214,7 @@ def rast_to_adv_graph(rastArray, res, nb_edge, max_slope, method, threshold, mas
                             ([ [shift[24]  ,  shift[33]] , [shift[40]  ,  shift[18]] , [shift[39],  shift[35]]  ]),                           #47
                             ([ [shift[10]  ,  shift[37]] , [shift[28]  ,  shift[20]] , [shift[26],  shift[38]]  ])                            #48
                             ] 
-
     nb_edge+=1
-    
     if maskArray == None :
         #Loop over each pixel again to create slope and length dictionnary    
         for i in range(0,H) :
@@ -239,31 +226,33 @@ def rast_to_adv_graph(rastArray, res, nb_edge, max_slope, method, threshold, mas
                     nodeEnd="x"+str(i+x)+"y"+str(j+y)
                     try :
                         nodeEndValue= rastArray[i+x,j+y]
-                        #Calculate cost on length + addcost based on slope percent
-                        if index in [2,4,6,8] :
-                            length = res
-                        elif index in [1,3,5,7] :
-                            length = res*math.sqrt(2)
-                        elif index in [9,11,13,15,17,19,21,23]:
-                            length = res*math.sqrt(res)
-                        elif index in [10,14,18,22] :
-                            length = 2*res*math.sqrt(2)
-                        elif index in [12,16,20,24] :
-                            length = 2*res
-                        elif index in [25,28,29,32,33,36,37,40] :
-                            length = res*math.sqrt(10)
-                        elif index in [26,27,30,31,34,35,38,39] :
-                            length = res*math.sqrt(13)
+                        if nodeBegValue != -9999 and nodeEndValue != -9999:
+                            #Calculate cost on length + addcost based on slope percent
+                            if index in [2,4,6,8] :
+                                length = res
+                            elif index in [1,3,5,7] :
+                                length = res*math.sqrt(2)
+                            elif index in [9,11,13,15,17,19,21,23]:
+                                length = res*math.sqrt(res)
+                            elif index in [10,14,18,22] :
+                                length = 2*res*math.sqrt(2)
+                            elif index in [12,16,20,24] :
+                                length = 2*res
+                            elif index in [25,28,29,32,33,36,37,40] :
+                                length = res*math.sqrt(10)
+                            elif index in [26,27,30,31,34,35,38,39] :
+                                length = res*math.sqrt(13)
+                            else :
+                                length = res*math.sqrt(26)
+                            slope = math.fabs(nodeEndValue-nodeBegValue)/length*100
+                            # #max slope accepted in percent
+                            # max_slope_wanted= 12
+                            # if slope <= max_slope_wanted :
+                            G.add_info(nodeBeg,nodeEnd,length,slope)
                         else :
-                            length = res*math.sqrt(26)
-                        slope = math.fabs(nodeEndValue-nodeBegValue)/length*100
-                        # #max slope accepted in percent
-                        # max_slope_wanted= 12
-                        # if slope <= max_slope_wanted :
-                        G.add_info(nodeBeg,nodeEnd,length,slope)
+                            G.add_info(nodeBeg,nodeEnd,-9999,-9999)
                     except IndexError :
                         continue
-        
         ind=0
         nodes_dict={}
         for i in range(0,H) :
@@ -276,36 +265,32 @@ def rast_to_adv_graph(rastArray, res, nb_edge, max_slope, method, threshold, mas
                         try :
                             length = G.length[(nodeBeg, nodeEnd)]
                             slope = G.slope[(nodeBeg, nodeEnd)]
-                            if slope <= max_slope :
+                            if slope <= max_slope and slope != -9999 :
                                 id = nodeBeg+'|'+nodeEnd
                                 coords_list = slope_calc_coord[index]
                                 c_slope_list=[]
                                 c_slope = None
                                 count = 0
-                                
                                 for coords in coords_list :
                                     lx,ly = coords[0]
                                     nodeLeft="x"+str(i+lx)+"y"+str(j+ly)
                                     rx,ry = coords[1]
                                     nodeRight="x"+str(i+rx)+"y"+str(j+ry)
                                     if (i+lx) > 0 and (j+ly) > 0 and (i+rx) > 0 and (j+ry) > 0 and\
-                                        (i+lx) < H and (j+ly) < W and (i+rx) < H and (j+ry) < W :
+                                        (i+lx) < H and (j+ly) < W and (i+rx) < H and (j+ry) < W and G.slope[nodeLeft,nodeRight] != -9999 :
                                         c_slope_list.append(G.slope[nodeLeft,nodeRight])
                                     count+=1
                                 if len(c_slope_list) == count and count != 0 :
                                     c_slope = sum(c_slope_list) / len(c_slope_list)
-                                    
                                     pmax = 25
                                     pmin = 60
                                     larg = 4
-                                    
                                     if c_slope < pmax :
                                         assise = larg/2
                                     else :
                                         assise = min(round((larg / 2*(1 + ((c_slope - pmax)/(pmin - pmax))**2)),2),larg)
                                     talus  = assise**2 *larg * (c_slope/100) / 2 /(larg - (c_slope/100))
                                     addcost = talus
-                                    
                                     cost = length * addcost + length * 1
                                     G.add_nodes(id, nodeBeg, nodeEnd, cost)
                                     nodes_dict[id] = ind
@@ -313,7 +298,6 @@ def rast_to_adv_graph(rastArray, res, nb_edge, max_slope, method, threshold, mas
                         except IndexError :
                             continue
         nodes = G.nodes
-        
         for node1 in nodes :
             x2,y2 = id_to_coord(node1.end)
             id_pt1 = "x"+str(x2)+"y"+str(y2)
@@ -326,7 +310,6 @@ def rast_to_adv_graph(rastArray, res, nb_edge, max_slope, method, threshold, mas
                     id_next = id_pt1+'|'+id_pt2
                     if id_next in nodes_dict :
                         list_ind.append(nodes_dict[id_next])
-                    
             for edge in list_ind :
                 node2 = nodes[edge]
                 if node1.id != node2.id and node1.end == node2.beg :                            
@@ -336,42 +319,32 @@ def rast_to_adv_graph(rastArray, res, nb_edge, max_slope, method, threshold, mas
                         x3,y3 = id_to_coord(node2.end)
                         az1 = math.degrees(math.atan2(x2 - x1, y2 - y1))
                         az2 = math.degrees(math.atan2(x3 - x2, y3 - y2))
-                        
                         if min(x1,x3) <= x2 <= max(x1,x3) and min(y1,y3) <= y2 <= max(y1,y3):
-                        
                             mag_v1 = math.sqrt((x1-x2)**2+(y1-y2)**2)
                             mag_v2 = math.sqrt((x3-x2)**2+(y3-y2)**2)
-                            
                             if mag_v1 < mag_v2 :
                                 x_v2 , y_v2 = (x3 - x2, y3 - y2)
                                 x3,y3 = x2+x_v2/mag_v2*mag_v1 ,y2+y_v2/mag_v2*mag_v1
                             elif mag_v2 < mag_v1 :
                                 x_v2 , y_v2 = (x1 - x2, y1 - y2)
                                 x1,y1 = x2+x_v2/mag_v1*mag_v2 ,y2+y_v2/mag_v1*mag_v2
-                                
                             x_v1 , y_v1 = (x2 - x1, y2 - y1)
                             x_v1_ort , y_v1_ort = y_v1 , -x_v1
                             x_v2 , y_v2 = (x3 - x2, y3 - y2)
                             x_v2_ort , y_v2_ort = y_v2 , -x_v2
-                            
                             c_v1_ort = y_v1_ort*x1+(-x_v1_ort)*y1
                             c_v1_ort = -c_v1_ort
                             c_v2_ort = y_v2_ort*x3+(-x_v2_ort)*y3
                             c_v2_ort = -c_v2_ort
-                            
                             e = [-y_v1_ort,x_v1_ort,c_v1_ort]
                             f = [-y_v2_ort,x_v2_ort,c_v2_ort]
                             x4 , y4, colineaire = equationResolve(e,f)
-
                             if (x4 != None and y4 != None) :
                                 dist1 = math.sqrt((x1-x4)**2+(y1-y4)**2)*5
-                                
                                 if dist1 >= threshold :
                                     node1.add_edge(node2)
-                            
                             elif colineaire == True :
                                 node1.add_edge(node2)
-                    
                     if method == 'a' :
                         x1,y1 = id_to_coord(node1.beg)
                         x2,y2 = id_to_coord(node1.end)
@@ -401,31 +374,33 @@ def rast_to_adv_graph(rastArray, res, nb_edge, max_slope, method, threshold, mas
                       nodeEnd="x"+str(i+x)+"y"+str(j+y)
                       try :
                           nodeEndValue= rastArray[i+x,j+y]
-                          #Calculate cost on length + addcost based on slope percent
-                          if index in [2,4,6,8] :
-                              length = res
-                          elif index in [1,3,5,7] :
-                              length = res*math.sqrt(2)
-                          elif index in [9,11,13,15,17,19,21,23]:
-                              length = res*math.sqrt(res)
-                          elif index in [10,14,18,22] :
-                              length = 2*res*math.sqrt(2)
-                          elif index in [12,16,20,24] :
-                              length = 2*res
-                          elif index in [25,28,29,32,33,36,37,40] :
-                              length = res*math.sqrt(10)
-                          elif index in [26,27,30,31,34,35,38,39] :
-                              length = res*math.sqrt(13)
+                          if nodeBegValue != -9999 and nodeEndValue != -9999:
+                              #Calculate cost on length + addcost based on slope percent
+                              if index in [2,4,6,8] :
+                                  length = res
+                              elif index in [1,3,5,7] :
+                                  length = res*math.sqrt(2)
+                              elif index in [9,11,13,15,17,19,21,23]:
+                                  length = res*math.sqrt(res)
+                              elif index in [10,14,18,22] :
+                                  length = 2*res*math.sqrt(2)
+                              elif index in [12,16,20,24] :
+                                  length = 2*res
+                              elif index in [25,28,29,32,33,36,37,40] :
+                                  length = res*math.sqrt(10)
+                              elif index in [26,27,30,31,34,35,38,39] :
+                                  length = res*math.sqrt(13)
+                              else :
+                                  length = res*math.sqrt(26)
+                              slope = math.fabs(nodeEndValue-nodeBegValue)/length*100
+                              # #max slope accepted in percent
+                              # max_slope_wanted= 12
+                              # if slope <= max_slope_wanted :
+                              G.add_info(nodeBeg,nodeEnd,length,slope)
                           else :
-                              length = res*math.sqrt(26)
-                          slope = math.fabs(nodeEndValue-nodeBegValue)/length*100
-                          # #max slope accepted in percent
-                          # max_slope_wanted= 12
-                          # if slope <= max_slope_wanted :
-                          G.add_info(nodeBeg,nodeEnd,length,slope)
+                              G.add_info(nodeBeg,nodeEnd,-9999,-9999)
                       except IndexError :
                           continue
-          
           ind=0
           nodes_dict={}
           for i in range(0,H) :
@@ -439,36 +414,32 @@ def rast_to_adv_graph(rastArray, res, nb_edge, max_slope, method, threshold, mas
                               if maskArray[i,j] != 0 and maskArray[i+x,j+y] != 0 :
                                   length = G.length[(nodeBeg, nodeEnd)]
                                   slope = G.slope[(nodeBeg, nodeEnd)]
-                                  if slope <= max_slope :
+                                  if slope <= max_slope and slope != -9999 :
                                       id = nodeBeg+'|'+nodeEnd
                                       coords_list = slope_calc_coord[index]
                                       c_slope_list=[]
                                       c_slope = None
                                       count = 0
-                                      
                                       for coords in coords_list :
                                           lx,ly = coords[0]
                                           nodeLeft="x"+str(i+lx)+"y"+str(j+ly)
                                           rx,ry = coords[1]
                                           nodeRight="x"+str(i+rx)+"y"+str(j+ry)
                                           if (i+lx) > 0 and (j+ly) > 0 and (i+rx) > 0 and (j+ry) > 0 and\
-                                              (i+lx) < H and (j+ly) < W and (i+rx) < H and (j+ry) < W :
+                                              (i+lx) < H and (j+ly) < W and (i+rx) < H and (j+ry) < W and G.slope[nodeLeft,nodeRight] != -9999 :
                                               c_slope_list.append(G.slope[nodeLeft,nodeRight])
                                           count+=1
                                       if len(c_slope_list) == count and count != 0 :
                                           c_slope = sum(c_slope_list) / len(c_slope_list)
-                                          
                                           pmax = 25
                                           pmin = 60
                                           larg = 4
-                                          
                                           if c_slope < pmax :
                                               assise = larg/2
                                           else :
                                               assise = min(round((larg / 2*(1 + ((c_slope - pmax)/(pmin - pmax))**2)),2),larg)
                                           talus  = assise**2 *larg * (c_slope/100) / 2 /(larg - (c_slope/100))
                                           addcost = talus
-                                          
                                           cost = length * addcost + length * 1
                                           G.add_nodes(id, nodeBeg, nodeEnd, cost)
                                           nodes_dict[id] = ind
@@ -476,7 +447,6 @@ def rast_to_adv_graph(rastArray, res, nb_edge, max_slope, method, threshold, mas
                           except IndexError :
                               continue
           nodes = G.nodes
-          
           for node1 in nodes :
               x2,y2 = id_to_coord(node1.end)
               id_pt1 = "x"+str(x2)+"y"+str(y2)
@@ -489,7 +459,6 @@ def rast_to_adv_graph(rastArray, res, nb_edge, max_slope, method, threshold, mas
                       id_next = id_pt1+'|'+id_pt2
                       if id_next in nodes_dict :
                           list_ind.append(nodes_dict[id_next])
-                      
               for edge in list_ind :
                   node2 = nodes[edge]
                   if node1.id != node2.id and node1.end == node2.beg :                            
@@ -499,42 +468,32 @@ def rast_to_adv_graph(rastArray, res, nb_edge, max_slope, method, threshold, mas
                           x3,y3 = id_to_coord(node2.end)
                           az1 = math.degrees(math.atan2(x2 - x1, y2 - y1))
                           az2 = math.degrees(math.atan2(x3 - x2, y3 - y2))
-                          
                           if min(x1,x3) <= x2 <= max(x1,x3) and min(y1,y3) <= y2 <= max(y1,y3):
-                          
                               mag_v1 = math.sqrt((x1-x2)**2+(y1-y2)**2)
                               mag_v2 = math.sqrt((x3-x2)**2+(y3-y2)**2)
-                              
                               if mag_v1 < mag_v2 :
                                   x_v2 , y_v2 = (x3 - x2, y3 - y2)
                                   x3,y3 = x2+x_v2/mag_v2*mag_v1 ,y2+y_v2/mag_v2*mag_v1
                               elif mag_v2 < mag_v1 :
                                   x_v2 , y_v2 = (x1 - x2, y1 - y2)
                                   x1,y1 = x2+x_v2/mag_v1*mag_v2 ,y2+y_v2/mag_v1*mag_v2
-                                  
                               x_v1 , y_v1 = (x2 - x1, y2 - y1)
                               x_v1_ort , y_v1_ort = y_v1 , -x_v1
                               x_v2 , y_v2 = (x3 - x2, y3 - y2)
                               x_v2_ort , y_v2_ort = y_v2 , -x_v2
-                              
                               c_v1_ort = y_v1_ort*x1+(-x_v1_ort)*y1
                               c_v1_ort = -c_v1_ort
                               c_v2_ort = y_v2_ort*x3+(-x_v2_ort)*y3
                               c_v2_ort = -c_v2_ort
-                              
                               e = [-y_v1_ort,x_v1_ort,c_v1_ort]
                               f = [-y_v2_ort,x_v2_ort,c_v2_ort]
                               x4 , y4, colineaire = equationResolve(e,f)
-
                               if (x4 != None and y4 != None) :
                                   dist1 = math.sqrt((x1-x4)**2+(y1-y4)**2)*5
-                                  
                                   if dist1 >= threshold :
                                       node1.add_edge(node2)
-                              
                               elif colineaire == True :
                                   node1.add_edge(node2)
-                      
                       if method == 'a' :
                           x1,y1 = id_to_coord(node1.beg)
                           x2,y2 = id_to_coord(node1.end)
@@ -555,11 +514,10 @@ def rast_to_adv_graph(rastArray, res, nb_edge, max_slope, method, threshold, mas
                               node1.add_edge(node2)
     return G
 
-def adv_dijkstra(graph, init, last, threshold, end_id, method, usefull_beg_tracks, usefull_end_tracks) :            
+def adv_dijkstra(graph, init, last, threshold, end_ids, method, usefull_beg_tracks, usefull_end_tracks) :            
     nodes = graph.nodes
     
     beg_list = []
-    end_ids = [end_id]
     del_ids= []
     #dict to get path
     path = defaultdict(list)
@@ -860,11 +818,9 @@ def ids_to_coord(lcp,gt):
         id=id[1:]
         px,py=id.split('y')
         px,py=int(px),int(py)
-        
         #Convert from pixel to map coordinates.
         mx = py * gt[1] + gt[0] + gt[1]/2
         my = px * gt[5] + gt[3] - gt[5]/2
-        
         coord_list.append((mx,my))
     #return the list of end point with x,y map coordinates
     return coord_list
@@ -1086,6 +1042,15 @@ def map2pixel(point_geom,gt):
     beg_point = "x"+str(px)+"y"+str(py)
     return beg_point
 
+def buffEndPoint(end_point):
+    ids=[]
+    px,py = id_to_coord(end_point)
+    for pi in range(px-2,px+3):
+        for pj in range(py-2,py+3):
+            id = 'x'+str(pi)+'y'+str(pj)
+            ids.append(id)
+    return ids
+
 def betweenPoint(point, next_point, point_layer, DEM_layer, tracks_layer, line_id,outpath, nb_edges, max_slope, method, threshold, x_res, y_res, f_extent, last_beg, Mask_layer):
     point_geom = point.geometry().asPoint()
     npoint_geom = next_point.geometry().asPoint()
@@ -1100,12 +1065,25 @@ def betweenPoint(point, next_point, point_layer, DEM_layer, tracks_layer, line_i
     G = rast_to_adv_graph(in_array, res, nb_edges, max_slope, method, threshold, in_array_mask)
     beg_point = map2pixel(point_geom, scr)
     usefull_beg_tracks = getUsefullTrack(extent,tracks_layer,line_id,scr,point_layer,point)
+    end_points = []
+    end_point = map2pixel(npoint_geom, scr)
+    end_points.append(end_point)
     if next_point.attribute('nature')=='end':
-        usefull_end_tracks = getUsefullTrack(extent,tracks_layer,line_id,scr,point_layer,next_point)
+        other_point = None
+        req = QgsFeatureRequest(QgsExpression("L_id != %s"%(line_id))).setFilterRect(next_point.geometry().buffer(1,4).boundingBox())
+        other_point_it = point_layer.getFeatures(req)
+        try:
+            other_point = next(other_point_it)
+        except StopIteration:
+            pass
+        if other_point != None :
+            usefull_end_tracks = getUsefullTrack(extent,tracks_layer,line_id,scr,point_layer,next_point)
+        else :
+            end_points = buffEndPoint(end_point)
+            usefull_end_tracks = []
     else:
         usefull_end_tracks = []
-    end_point = map2pixel(npoint_geom, scr)
-    path, beg_list, end_id,last_mouv, w = adv_dijkstra(G,beg_point,last_beg,threshold,end_point,method,usefull_beg_tracks,usefull_end_tracks)
+    path, beg_list, end_id,last_mouv, w = adv_dijkstra(G,beg_point,last_beg,threshold,end_points,method,usefull_beg_tracks,usefull_end_tracks)
     G = None
     return path, beg_list, beg_point, end_id, last_mouv, w, scr
 
@@ -1478,10 +1456,16 @@ def advanced_algo(point_layer,DEM_layer,tracks_layer,outpath,nb_edges,method,thr
                                         tracks_layer.dataProvider().addFeatures([new_feat])
                                         tracks_layer.commitChanges()
                                     elif f_poly.attribute("L_id") != str(line) :
-                                        if f_poly.attribute("L_id") in line_to_change.keys() :
-                                            line_to_change[f_poly.attribute("L_id")].append([line,next_id])
-                                        else :
-                                            line_to_change[f_poly.attribute("L_id")]=[[line,next_id]]
+                                        expr = QgsExpression('L_id = %s'%(f_poly.attribute("L_id")))
+                                        req = QgsFeatureRequest(expr).setFilterRect(point.geometry().buffer(1,4).boundingBox())
+                                        point_int_it = None
+                                        point_int_it = point_layer.getFeatures(req)
+                                        point_int = next(point_int_it)
+                                        if point_int.attribute("nature") == "end" :
+                                            if f_poly.attribute("L_id") in line_to_change.keys() :
+                                                line_to_change[f_poly.attribute("L_id")].append([line,next_id])
+                                            else :
+                                                line_to_change[f_poly.attribute("L_id")]=[[line,next_id]]
                             except StopIteration:
                                 pass
 
@@ -1535,7 +1519,7 @@ def advanced_algo(point_layer,DEM_layer,tracks_layer,outpath,nb_edges,method,thr
                                 print 'is it good ?'
                                 for lin in cut_line.getFeatures() :
                                     geom_lin = lin.geometry().asPolyline()
-                                    if geom_lin[0] not in geom_cros_e and geom_lin[-1] not in geom_cros_e and (geom_lin[0] in last_geom_e or geom_lin[-1] in last_geom_e)  :
+                                    if geom_lin[0] == last_geom_p[0]  :
                                         lin.setAttributes(attr_last_line)
                                         tracks_layer.startEditing()
                                         tracks_layer.dataProvider().addFeatures([lin])

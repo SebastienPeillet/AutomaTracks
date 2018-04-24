@@ -23,7 +23,6 @@
 from PyQt4.QtCore import QSettings, QTranslator, \
     qVersion, QCoreApplication, Qt, QFileInfo
 from PyQt4.QtGui import QAction, QIcon
-
 from qgis.core import QgsRasterLayer, QgsGeometry
 import math
 import Utils
