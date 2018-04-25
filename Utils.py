@@ -1438,12 +1438,13 @@ def advanced_algo(point_layer,DEM_layer,tracks_layer,outpath,nb_edges,method,thr
                                 first_point = last_line.geometry().asPolyline()[-1]
                                 pt_geom = QgsGeometry().fromPoint(first_point).buffer(1,4)
                                 feat_prev_it = tracks_layer.getFeatures(QgsFeatureRequest().setFilterRect(pt_geom.boundingBox()))
+                                rm_ids=[]
                                 for f_poly in feat_prev_it:
                                     if f_poly.attribute("L_id") == str(line) and f_poly.attribute("P_id") != str(next_id) :
                                         f_poly_geom = f_poly.geometry().asPolyline()
                                         for i,f_pt in enumerate(f_poly_geom):
                                             if f_pt == first_point:
-                                                rm_id = f_poly.id()
+                                                rm_ids.append(f_poly.id())
                                                 attr = f_poly.attributes()
                                                 ind = i
                                         new_feat = QgsFeature(tracks_layer.pendingFields())
@@ -1452,7 +1453,6 @@ def advanced_algo(point_layer,DEM_layer,tracks_layer,outpath,nb_edges,method,thr
                                         new_feat.setGeometry(new_geom)
                                         new_feat.setAttributes(attr)
                                         tracks_layer.startEditing()
-                                        tracks_layer.dataProvider().deleteFeatures([rm_id])
                                         tracks_layer.dataProvider().addFeatures([new_feat])
                                         tracks_layer.commitChanges()
                                     elif f_poly.attribute("L_id") != str(line) :
@@ -1466,6 +1466,9 @@ def advanced_algo(point_layer,DEM_layer,tracks_layer,outpath,nb_edges,method,thr
                                                 line_to_change[f_poly.attribute("L_id")].append([line,next_id])
                                             else :
                                                 line_to_change[f_poly.attribute("L_id")]=[[line,next_id]]
+                                tracks_layer.startEditing()
+                                tracks_layer.dataProvider().deleteFeatures(rm_ids)
+                                tracks_layer.commitChanges()
                             except StopIteration:
                                 pass
 
