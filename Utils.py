@@ -88,9 +88,24 @@ def imp_raster(clip):
     iArray=band.ReadAsArray()
     return iArray, scr, proj, resolution
 
-def rast_to_adv_graph(rastArray, res, nb_edge, max_slope, method, threshold, maskArray) :
-    G= AdvGraph()
+def rast_to_adv_graph(rastArray, res, nb_edge, max_slope, method, threshold, maskArray, beg_point, end_point) :
     [H,W] = rastArray.shape
+    #authorize path in the area of the beg and end point if there are not in the mask
+    if maskArray != None :
+        px_beg,py_beg = id_to_coord(beg_point)
+        if maskArray[px_beg,py_beg] == 0 :
+            for i in range(px_beg-3,px_beg+4):
+                for j in range(py_beg-3,py_beg+4):
+                    if 0<=i<=H and 0<=j<=W :
+                        maskArray[i,j] = 4
+        px_end,py_end = id_to_coord(end_point)
+        if maskArray[px_end,py_end] == 0 :
+            for i in range(px_end-3,px_end+4):
+                for j in range(py_end-3,py_end+4):
+                    if 0<=i<=H and 0<=j<=W :
+                        maskArray[i,j] = 4
+
+    G= AdvGraph()
     #Shifts to get every edges from each nodes. For now, based on 48 direction like :
     #     |   |   |   | 43|   | 42|   |   |   |
     #  ---|---|---|---|---|---|---|---|---|---|---
@@ -1062,12 +1077,12 @@ def betweenPoint(point, next_point, point_layer, DEM_layer, tracks_layer, line_i
     else :
         in_array_mask = None
     in_array, scr, proj, res = imp_raster(dem_clip)
-    G = rast_to_adv_graph(in_array, res, nb_edges, max_slope, method, threshold, in_array_mask)
     beg_point = map2pixel(point_geom, scr)
-    usefull_beg_tracks = getUsefullTrack(extent,tracks_layer,line_id,scr,point_layer,point)
     end_points = []
     end_point = map2pixel(npoint_geom, scr)
     end_points.append(end_point)
+    G = rast_to_adv_graph(in_array, res, nb_edges, max_slope, method, threshold, in_array_mask, beg_point, end_point)
+    usefull_beg_tracks = getUsefullTrack(extent,tracks_layer,line_id,scr,point_layer,point)
     if next_point.attribute('nature')=='end':
         other_point = None
         req = QgsFeatureRequest(QgsExpression("L_id != %s"%(line_id))).setFilterRect(next_point.geometry().buffer(1,4).boundingBox())
@@ -1455,6 +1470,20 @@ def advanced_algo(point_layer,DEM_layer,tracks_layer,outpath,nb_edges,method,thr
                                         tracks_layer.startEditing()
                                         tracks_layer.dataProvider().addFeatures([new_feat])
                                         tracks_layer.commitChanges()
+                                        if f_poly.attribute("P_id") != point_id:
+                                            diff = int(next_id) - int(f_poly.attribute('P_id'))
+                                            while diff !=1 :
+                                                diff = diff -1
+                                                searched_pid = int(f_poly.attribute('P_id')) + diff
+                                                expr = QgsExpression('L_id = %s AND P_id= %s'%(line, str(searched_pid)))
+                                                req = QgsFeatureRequest(expr)
+                                                searched_line_it = None
+                                                searched_line_it = tracks_layer.getFeatures(req)
+                                                try:
+                                                    searched_line = next(searched_line_it)
+                                                    rm_ids.append(searched_line.id())
+                                                except StopIteration:
+                                                    pass
                                     elif f_poly.attribute("L_id") != str(line) :
                                         expr = QgsExpression('L_id = %s'%(f_poly.attribute("L_id")))
                                         req = QgsFeatureRequest(expr).setFilterRect(point.geometry().buffer(1,4).boundingBox())
@@ -1528,9 +1557,9 @@ def advanced_algo(point_layer,DEM_layer,tracks_layer,outpath,nb_edges,method,thr
                                         tracks_layer.dataProvider().addFeatures([lin])
                                         tracks_layer.commitChanges()
                                         print 'ok'
-                                    tracks_layer.startEditing()
-                                    tracks_layer.deleteFeatures([last_line.id()])
-                                    tracks_layer.commitChanges()
+                                tracks_layer.startEditing()
+                                tracks_layer.deleteFeatures([last_line.id()])
+                                tracks_layer.commitChanges()
                                 temp_layer = None
                                 cut_line = None
 
