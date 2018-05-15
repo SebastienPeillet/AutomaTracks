@@ -235,11 +235,13 @@ class AutomaTracks:
         layers = self.iface.legendInterface().layers()
         self.rast_layer_list = []
         index = 0
+        # fill the list layer
         for layer in layers:
             if layer.type() == 1:
                 self.rast_layer_list.append(layer.name())
                 self.rast_list.append(index)
             index += 1
+        # fill comboBox with the list layer
         self.dockwidget.DEMInput.addItems(self.rast_layer_list)
 
     def listRastLayerMask(self):
@@ -252,6 +254,7 @@ class AutomaTracks:
         layers = self.iface.legendInterface().layers()
         layer_list = []
         index = 0
+        # fill the list layer
         for layer in layers:
             if layer.type() == 1:
                 layer_list.append(layer.name())
@@ -259,6 +262,7 @@ class AutomaTracks:
             index += 1
         layer_list.append('None')
         self.rast_list.append(-1)
+        # fill comboBox with the list layer
         self.dockwidget.MaskInput.addItems(layer_list)
 
     def listVectLayer(self):
@@ -271,12 +275,14 @@ class AutomaTracks:
         layers = self.iface.legendInterface().layers()
         self.vect_layer_list = []
         index = 0
+        # fill the list layer
         for layer in layers:
             if layer.type() == 0:
                 if layer.geometryType() == 0:
                     self.vect_layer_list.append(layer.name())
                     self.vect_list.append(index)
             index += 1
+        # fill comboBox with the list layer
         self.dockwidget.PointInput.addItems(self.vect_layer_list)
 
     def listlineVectLayer(self):
@@ -289,6 +295,7 @@ class AutomaTracks:
         layers = self.iface.legendInterface().layers()
         self.line_layer_list = []
         index = 0
+        # fill the list layer
         for layer in layers:
             if layer.type() == 0:
                 if layer.geometryType() == 1:
@@ -314,19 +321,10 @@ class AutomaTracks:
         else :
             MaskLayer = None
 
-        #4 Get the output path
+        # 4 Get the output path
         outpath = self.dockwidget.outPathEdit.text()
 
-        # # Load raster layer
-        # fileName = DEMLayer.publicSource()
-        # fileInfo = QFileInfo(fileName)
-        # baseName = fileInfo.baseName()
-        # # keep raster path
-        # pathRaster = os.path.dirname(fileName)
-        # dem = QgsRasterLayer(fileName, baseName)
-        # if not dem.isValid():
-        #     print "Layer failed to load!"
-
+        # 5 Parameters
         try:
             edges = self.dockwidget.EdgesNumGroup.checkedButton().text()
             method = self.dockwidget.DirectionGroup.checkedButton().text()
@@ -336,21 +334,29 @@ class AutomaTracks:
                 method = 'r'
             threshold = self.dockwidget.MaxDirSpinBox.value()
             max_slope = self.dockwidget.MaxSlopeSpinBox.value()
+            # Launch the path research
+            Utils.launchAutomatracks(pointsLayer, DEMLayer, outpath, edges,method,threshold,max_slope, MaskLayer)
         except AttributeError as e:
             print "%s : No edges number or direction option" %e
-        Utils.launchAutomatracks(pointsLayer, DEMLayer, outpath, edges,method,threshold,max_slope, MaskLayer)
 
     def reOrderScript(self):
+        """Launch reorder from an outletscript"""
+        #list layers
         self.listRastLayer()
         self.listVectLayer()
+        #launch the dock
         self.reOrderDock = reOrderDock(self.iface, self.vect_layer_list, self.vect_list)
         self.reOrderDock.show()
 
     def ridgeToPointScript(self):
+        """Launch ridge to point script"""
+        #list layers
         self.listRastLayer()
         self.listlineVectLayer()
+        #launch the dock
         self.ridgeToPointDock = ridgeToPointDock(self.iface, self.line_layer_list, self.line_vect_list, self.rast_layer_list, self.rast_list)
         self.ridgeToPointDock.show()
+
     #---------------------------------------------------------------------------
     def run(self):
         """Run method that loads and starts the plugin"""

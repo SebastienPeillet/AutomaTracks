@@ -53,44 +53,60 @@ class Timer():
             print delta
 
 class AdvGraph ():
+    """Graph class, which will contain each node.
+    To use for the least cost path process"""
     def __init__(self) :
+        """Init graph"""
         self.nodes = []
         self.edges=defaultdict(list)
         self.slope_info=defaultdict(list)
         self.length = {}
         self.slope = {}
+
     def add_nodes(self, id, beg_id, end_id, cost) :
+        """Function to add a new node in the graph"""
         node = NodeGraph(id,beg_id, end_id, cost)
         self.nodes.append(node)
+
     def add_info(self, beg, end, length, slope):
+        """Function to save info for nodes creation"""
         self.slope_info[beg].append(end)
         self.length[(beg,end)] = length
         self.slope[(beg,end)] = slope
 
 class NodeGraph():
+    """Node class, with all informations to use
+    for the least cost path process"""
     def __init__(self, id, beg, end, cost) :
+        """Init node with id, beg_id, end_id,
+        cost from the beg pixel to the end pixel"""
         self.id = id
         self.beg = beg
         self.end = end
         self.cost = cost
         self.cumcost = None
         self.edges = []
+
     def add_edge(self,node) :
+        """Function to add an edge to the node"""
         self.edges.append(node)
         
 def imp_raster(clip):
     # Open the input raster to retrieve values in an array
     data = gdal.Open(clip,1)
+    # Retrieve proj info
     proj = data.GetProjection()
     scr = data.GetGeoTransform()
     resolution = scr[1]
+    # Get raster into array
     band=data.GetRasterBand(1)
     iArray=band.ReadAsArray()
     return iArray, scr, proj, resolution
 
 def rast_to_adv_graph(rastArray, res, nb_edge, max_slope, method, threshold, maskArray, beg_point, end_point) :
+    # Get Height and Width of the clip
     [H,W] = rastArray.shape
-    #authorize path in the area of the beg and end point if there are not in the mask
+    # Authorize path in the area of the beg and end point if there are not in the mask
     if maskArray != None :
         px_beg,py_beg = id_to_coord(beg_point)
         if maskArray[px_beg,py_beg] == 0 :
@@ -105,8 +121,9 @@ def rast_to_adv_graph(rastArray, res, nb_edge, max_slope, method, threshold, mas
                     if 0<=i<=H and 0<=j<=W :
                         maskArray[i,j] = 4
 
+    # Init graph
     G= AdvGraph()
-    #Shifts to get every edges from each nodes. For now, based on 48 direction like :
+    # Shifts to get every edges from each nodes. For now, based on 48 direction like :
     #     |   |   |   | 43|   | 42|   |   |   |
     #  ---|---|---|---|---|---|---|---|---|---|---
     #     |   |   |   |   |   |   |   |   |   |
@@ -179,6 +196,7 @@ def rast_to_adv_graph(rastArray, res, nb_edge, max_slope, method, threshold, mas
              ( 5,  1), #47
              ( 1,  5)  #48
              ]
+    # List for the slope calc
     slope_calc_coord  =    [( 0,  0),                                                                                                       #0
                             ([ [shift[2]  ,  shift[8]] ]),                                                                                  #1
                             ([ [shift[4]  ,  shift[8]] , [shift[3]  ,  shift[1]] ]),                                                        #2
@@ -230,8 +248,9 @@ def rast_to_adv_graph(rastArray, res, nb_edge, max_slope, method, threshold, mas
                             ([ [shift[10]  ,  shift[37]] , [shift[28]  ,  shift[20]] , [shift[26],  shift[38]]  ])                            #48
                             ] 
     nb_edge+=1
+    # Raster conversion to graph if there is no mask raster
     if maskArray == None :
-        #Loop over each pixel again to create slope and length dictionnary    
+        # Loop over each pixel to create slope and length dictionnary    
         for i in range(0,H) :
             for j in range(0,W) :
                 nodeBeg = "x"+str(i)+"y"+str(j)
@@ -242,7 +261,7 @@ def rast_to_adv_graph(rastArray, res, nb_edge, max_slope, method, threshold, mas
                     try :
                         nodeEndValue= rastArray[i+x,j+y]
                         if nodeBegValue != -9999 and nodeEndValue != -9999:
-                            #Calculate cost on length + addcost based on slope percent
+                            # Calculate cost on length + addcost based on slope percent
                             if index in [2,4,6,8] :
                                 length = res
                             elif index in [1,3,5,7] :
@@ -260,9 +279,6 @@ def rast_to_adv_graph(rastArray, res, nb_edge, max_slope, method, threshold, mas
                             else :
                                 length = res*math.sqrt(26)
                             slope = math.fabs(nodeEndValue-nodeBegValue)/length*100
-                            # #max slope accepted in percent
-                            # max_slope_wanted= 12
-                            # if slope <= max_slope_wanted :
                             G.add_info(nodeBeg,nodeEnd,length,slope)
                         else :
                             G.add_info(nodeBeg,nodeEnd,-9999,-9999)
@@ -270,6 +286,7 @@ def rast_to_adv_graph(rastArray, res, nb_edge, max_slope, method, threshold, mas
                         continue
         ind=0
         nodes_dict={}
+        # Loop over each pixel again, to create nodes
         for i in range(0,H) :
             for j in range(0,W) :
                 nodeBeg = "x"+str(i)+"y"+str(j)
@@ -280,12 +297,14 @@ def rast_to_adv_graph(rastArray, res, nb_edge, max_slope, method, threshold, mas
                         try :
                             length = G.length[(nodeBeg, nodeEnd)]
                             slope = G.slope[(nodeBeg, nodeEnd)]
+                            # if along slope is OK with the slope threshold
                             if slope <= max_slope and slope != -9999 :
                                 id = nodeBeg+'|'+nodeEnd
                                 coords_list = slope_calc_coord[index]
                                 c_slope_list=[]
                                 c_slope = None
                                 count = 0
+                                # c_slope calculation
                                 for coords in coords_list :
                                     lx,ly = coords[0]
                                     nodeLeft="x"+str(i+lx)+"y"+str(j+ly)
@@ -312,7 +331,9 @@ def rast_to_adv_graph(rastArray, res, nb_edge, max_slope, method, threshold, mas
                                     ind+=1
                         except IndexError :
                             continue
+
         nodes = G.nodes
+        # Loop over nodes to establish edges between nodes with direction constraint
         for node1 in nodes :
             x2,y2 = id_to_coord(node1.end)
             id_pt1 = "x"+str(x2)+"y"+str(y2)
@@ -327,7 +348,8 @@ def rast_to_adv_graph(rastArray, res, nb_edge, max_slope, method, threshold, mas
                         list_ind.append(nodes_dict[id_next])
             for edge in list_ind :
                 node2 = nodes[edge]
-                if node1.id != node2.id and node1.end == node2.beg :                            
+                if node1.id != node2.id and node1.end == node2.beg :
+                    # Direction constraint method with radius of curvature
                     if method == 'r' :
                         x1,y1 = id_to_coord(node1.beg)
                         x2,y2 = id_to_coord(node1.end)
@@ -360,6 +382,7 @@ def rast_to_adv_graph(rastArray, res, nb_edge, max_slope, method, threshold, mas
                                     node1.add_edge(node2)
                             elif colineaire == True :
                                 node1.add_edge(node2)
+                    # Direction constraint method with angle
                     if method == 'a' :
                         x1,y1 = id_to_coord(node1.beg)
                         x2,y2 = id_to_coord(node1.end)
@@ -378,8 +401,9 @@ def rast_to_adv_graph(rastArray, res, nb_edge, max_slope, method, threshold, mas
                             angle = angle - 360
                         if math.fabs(angle) <= threshold :
                             node1.add_edge(node2)
+    # Raster conversion to graph with mask raster
     else:
-        #Loop over each pixel again to create slope and length dictionnary    
+        #Loop over each pixel to create slope and length dictionnary    
           for i in range(0,H) :
               for j in range(0,W) :
                   nodeBeg = "x"+str(i)+"y"+str(j)
@@ -408,9 +432,6 @@ def rast_to_adv_graph(rastArray, res, nb_edge, max_slope, method, threshold, mas
                               else :
                                   length = res*math.sqrt(26)
                               slope = math.fabs(nodeEndValue-nodeBegValue)/length*100
-                              # #max slope accepted in percent
-                              # max_slope_wanted= 12
-                              # if slope <= max_slope_wanted :
                               G.add_info(nodeBeg,nodeEnd,length,slope)
                           else :
                               G.add_info(nodeBeg,nodeEnd,-9999,-9999)
@@ -418,6 +439,7 @@ def rast_to_adv_graph(rastArray, res, nb_edge, max_slope, method, threshold, mas
                           continue
           ind=0
           nodes_dict={}
+          # Loop over each pixel again, to create nodes
           for i in range(0,H) :
               for j in range(0,W) :
                   nodeBeg = "x"+str(i)+"y"+str(j)
@@ -429,12 +451,14 @@ def rast_to_adv_graph(rastArray, res, nb_edge, max_slope, method, threshold, mas
                               if maskArray[i,j] != 0 and maskArray[i+x,j+y] != 0 :
                                   length = G.length[(nodeBeg, nodeEnd)]
                                   slope = G.slope[(nodeBeg, nodeEnd)]
+                                  # if along slope is OK with the slope threshold
                                   if slope <= max_slope and slope != -9999 :
                                       id = nodeBeg+'|'+nodeEnd
                                       coords_list = slope_calc_coord[index]
                                       c_slope_list=[]
                                       c_slope = None
                                       count = 0
+                                      # c_slope calculation
                                       for coords in coords_list :
                                           lx,ly = coords[0]
                                           nodeLeft="x"+str(i+lx)+"y"+str(j+ly)
@@ -461,6 +485,8 @@ def rast_to_adv_graph(rastArray, res, nb_edge, max_slope, method, threshold, mas
                                           ind+=1
                           except IndexError :
                               continue
+
+          # Loop over nodes to establish edges between nodes with direction constraint
           nodes = G.nodes
           for node1 in nodes :
               x2,y2 = id_to_coord(node1.end)
@@ -476,7 +502,8 @@ def rast_to_adv_graph(rastArray, res, nb_edge, max_slope, method, threshold, mas
                           list_ind.append(nodes_dict[id_next])
               for edge in list_ind :
                   node2 = nodes[edge]
-                  if node1.id != node2.id and node1.end == node2.beg :                            
+                  if node1.id != node2.id and node1.end == node2.beg :
+                      # Direction constraint method with radius of curvature
                       if method == 'r' :
                           x1,y1 = id_to_coord(node1.beg)
                           x2,y2 = id_to_coord(node1.end)
@@ -509,6 +536,7 @@ def rast_to_adv_graph(rastArray, res, nb_edge, max_slope, method, threshold, mas
                                       node1.add_edge(node2)
                               elif colineaire == True :
                                   node1.add_edge(node2)
+                      # Direction constraint method with angle
                       if method == 'a' :
                           x1,y1 = id_to_coord(node1.beg)
                           x2,y2 = id_to_coord(node1.end)
@@ -531,16 +559,18 @@ def rast_to_adv_graph(rastArray, res, nb_edge, max_slope, method, threshold, mas
 
 def adv_dijkstra(graph, init, last, threshold, end_ids, method, usefull_beg_tracks, usefull_end_tracks) :            
     nodes = graph.nodes
-    
     beg_list = []
     del_ids= []
-    #dict to get path
+    # Dict to get path
     path = defaultdict(list)
     
-    #Init
+    # Init
     for node in nodes :
+        # Init beg nodes cumcost with the cost of the node
         if node.beg == init :
             if last != None :
+                # Compare direction constraint with the last segment direction if exist
+                # Direction constraint method with radius of curvature
                 if method == 'r' :
                     x,y = last
                     x2,y2 = id_to_coord(node.beg)
@@ -589,6 +619,7 @@ def adv_dijkstra(graph, init, last, threshold, end_ids, method, usefull_beg_trac
                             node.cumcost = node.cost
                             beg_list.append(node.id)
                             path[node.id].append((node.id,node.cumcost))
+                # Direction constraint method with angle
                 elif method == 'a' :
                     x,y = last
                     x2,y2 = id_to_coord(node.beg)
@@ -618,7 +649,9 @@ def adv_dijkstra(graph, init, last, threshold, end_ids, method, usefull_beg_trac
                 node.cumcost = node.cost
                 beg_list.append(node.id)
                 path[node.id].append((node.id,node.cumcost))
+        # Init beg nodes cumcost with the cost of the node if there is previous path created
         elif node.beg in usefull_beg_tracks:
+            # Direction constraint method with radius of curvature
             if method == 'r' :
                 x,y = usefull_beg_tracks[node.beg]
                 x2,y2 = id_to_coord(node.beg)
@@ -667,6 +700,7 @@ def adv_dijkstra(graph, init, last, threshold, end_ids, method, usefull_beg_trac
                         node.cumcost = node.cost
                         beg_list.append(node.id)
                         path[node.id].append((node.id,node.cumcost))
+            # Direction constraint method with angle
             elif method == 'a' :
                 x,y = usefull_beg_tracks[node.beg]
                 x2,y2 = id_to_coord(node.beg)
@@ -692,7 +726,9 @@ def adv_dijkstra(graph, init, last, threshold, end_ids, method, usefull_beg_trac
                 else :
                     node.cumcost = 9999
                     path[node.id].append((node.id,node.cumcost))
+        # Init end ids list if there is previous path created or end of network buffered
         elif node.end in usefull_end_tracks:
+            # Direction constraint method with radius of curvature
             if method == 'r' :
                 x,y = usefull_end_tracks[node.end]
                 x2,y2 = id_to_coord(node.end)
@@ -738,6 +774,7 @@ def adv_dijkstra(graph, init, last, threshold, end_ids, method, usefull_beg_trac
                         end_ids.append(node.end)
                     else :
                         del_ids.append(node.id)
+            # Direction constraint method with angle
             elif method == 'a' :
                 x,y = usefull_end_tracks[node.end]
                 x2,y2 = id_to_coord(node.end)
@@ -761,15 +798,18 @@ def adv_dijkstra(graph, init, last, threshold, end_ids, method, usefull_beg_trac
                 else :
                     del_ids.append(node.id)
 
+    # Delete nodes, which aren't suitable with direction constraint
     nodes = [node for node in nodes if node.id not in del_ids]
 
     min_node = NodeGraph(0,0,0,0)
     finish = None
     fin_weight = None
     count = 0
+    # Launch dijkstra algorithm
     while nodes: 
         if min_node.end not in end_ids:
             min_node = None
+            # Select the min cumcost node
             for i,node in enumerate(nodes) :
                 if node.cumcost != None :
                     if min_node is None :
@@ -779,9 +819,10 @@ def adv_dijkstra(graph, init, last, threshold, end_ids, method, usefull_beg_trac
                         ind = i
                         min_node = node
             
+            # Delete the min_node
             if min_node != None and min_node.cumcost < 5000 :
                 nodes.pop(ind)
-                
+                #Calcul of neighboured nodes cumcost based on edges of the min_node
                 for node in min_node.edges :
                     weight = min_node.cumcost + node.cost
                     if node.cumcost == None or weight < node.cumcost :
@@ -803,6 +844,7 @@ def adv_dijkstra(graph, init, last, threshold, end_ids, method, usefull_beg_trac
             beg,end = finish.split('|')
             x_beg,y_beg = id_to_coord(beg)
             x_end,y_end = id_to_coord(end)
+            # get last segment direction for the next path
             last_beg = (int(x_end)-int(x_beg),int(y_end)-int(y_beg))
             fin_weight = min_node.cumcost
             print fin_weight
@@ -810,6 +852,7 @@ def adv_dijkstra(graph, init, last, threshold, end_ids, method, usefull_beg_trac
     return path, beg_list, finish, last_beg, fin_weight
                     
 def equationResolve(e1,e2):
+    """Calcul the coordinates for the radius of curvature"""
     determinant=e1[0]*e2[1]-e1[1]*e2[0]
     x , y = None,None
     colineaire = False
@@ -821,13 +864,14 @@ def equationResolve(e1,e2):
     return x, y, colineaire
     
 def id_to_coord(id):
+    """Convert a node id to coordinates"""
     id=id[1:]
     px,py=id.split('y')
     px,py=int(px),int(py)
     return px,py
 
 def ids_to_coord(lcp,gt):
-    #Reproj pixel coordinates to map coordinates
+    """Reproj pixel coordinates to map coordinates"""
     coord_list = []
     for id in lcp :
         id=id[1:]
@@ -840,7 +884,8 @@ def ids_to_coord(lcp,gt):
     #return the list of end point with x,y map coordinates
     return coord_list
 
-def create_ridge(out_layer,lcp,id_line,point_id, nature, weight) :
+def create_ridge(out_layer,lcp,id_line,point_id, nature, weight):
+    """Create vector line for the path"""
     out_layer.startEditing()
     feat = QgsFeature(out_layer.pendingFields())
 
@@ -857,7 +902,8 @@ def create_ridge(out_layer,lcp,id_line,point_id, nature, weight) :
     out_layer.dataProvider().addFeatures([feat])
     out_layer.commitChanges()
 
-def get_adv_lcp(beg_list,path,end_id, method,threshold) :
+def get_adv_lcp(beg_list,path,end_id, method,threshold):
+    """Retrieve least cost path from the path dict"""
     if end_id != None :
         pt2, pt1 = end_id.split('|')
         act=end_id
@@ -876,6 +922,7 @@ def get_adv_lcp(beg_list,path,end_id, method,threshold) :
                 pt3= pt3[1:]
                 x3, y3 = pt3.split('y')
                 x1,y1,x2,y2,x3,y3 = int(x1),int(y1),int(x2),int(y2),int(x3),int(y3)
+                # Direction constraint method with radius of curvature
                 if method == 'a' :
                     az1 = math.degrees(math.atan2(x2 - x1, y2 - y1))
                     az2 = math.degrees(math.atan2(x3 - x2, y3 - y2))
@@ -891,7 +938,7 @@ def get_adv_lcp(beg_list,path,end_id, method,threshold) :
                         angle = angle - 360
                     if math.fabs(angle) <= threshold :
                         feasible_path.append(edge)
-                        
+                # Direction constraint method with angle
                 if method == 'r' :
                     az1 = math.degrees(math.atan2(x2 - x1, y2 - y1))
                     az2 = math.degrees(math.atan2(x3 - x2, y3 - y2))
@@ -947,6 +994,7 @@ def get_adv_lcp(beg_list,path,end_id, method,threshold) :
     return leastCostPath, act
 
 def getExtent(point_geom, npoint_geom, x_res, y_res, f_extent):
+    """Define clip extent from the start and end point"""
     x1,y1 = point_geom
     x2,y2 = npoint_geom
 
@@ -963,6 +1011,7 @@ def getExtent(point_geom, npoint_geom, x_res, y_res, f_extent):
     return extent
 
 def getClip(DEM_layer, outpath, extent, x_res, y_res, name):
+    """Create clip with the extent, previously defined"""
     name_clip = '%s\\tmp' % os.path.dirname(outpath)
     name_clip += name
     extent=str(str(extent[0])+','+str(extent[1])+','+str(extent[2])+','+str(extent[3]))
@@ -971,9 +1020,11 @@ def getClip(DEM_layer, outpath, extent, x_res, y_res, name):
     return name_clip
 
 def getUsefullTrack(extent,tracks_layer,line_id,scr,point_layer, in_point):
+    """Select path intersected by the clip extent"""
     nature = in_point.attribute('nature')
     rect = QgsRectangle(extent[0],extent[1],extent[2],extent[3])
     usefull_track_dict = {}
+    # if first segment, select track from the road crossing
     if nature == 'start':
         boundingBox = in_point.geometry().buffer(1,4).boundingBox()
         expre = QgsExpression('L_id != %s'%(in_point.attribute('L_id')))
@@ -996,6 +1047,7 @@ def getUsefullTrack(extent,tracks_layer,line_id,scr,point_layer, in_point):
                             ptp_x, ptp_y = id_to_coord(end_id)
                             last = (int(ptp_x)-int(pt_x),int(ptp_y)-int(pt_y))
                             usefull_track_dict[end_id]=last
+    # if end segment, select track from the road crossing
     elif nature == 'end':
         boundingBox = in_point.geometry().buffer(1,4).boundingBox()
         expre = QgsExpression('L_id != %s'%(in_point.attribute('L_id')))
@@ -1031,6 +1083,7 @@ def getUsefullTrack(extent,tracks_layer,line_id,scr,point_layer, in_point):
                                 ptp_x, ptp_y = id_to_coord(end_id)
                                 last = (int(ptp_x)-int(pt_x),int(ptp_y)-int(pt_y))
                                 usefull_track_dict[end_id]=last
+    # if not, select previous tracks with the same L_id
     else:
         expr = QgsExpression('L_id = %s'%(line_id))
         req = QgsFeatureRequest(expr).setFilterRect(rect)
@@ -1050,6 +1103,7 @@ def getUsefullTrack(extent,tracks_layer,line_id,scr,point_layer, in_point):
     return usefull_track_dict
 
 def map2pixel(point_geom,gt):
+    """Change map coordinates to pixel coordinates"""
     mx,my = point_geom
     #Convert from map to pixel coordinates.
     px = int(( my - gt[3] + gt[5]/2) / gt[5])
@@ -1058,6 +1112,7 @@ def map2pixel(point_geom,gt):
     return beg_point
 
 def buffEndPoint(end_point):
+    """Get ids of the end nodes for end of network"""
     ids=[]
     px,py = id_to_coord(end_point)
     for pi in range(px-2,px+3):
@@ -1067,21 +1122,29 @@ def buffEndPoint(end_point):
     return ids
 
 def betweenPoint(point, next_point, point_layer, DEM_layer, tracks_layer, line_id,outpath, nb_edges, max_slope, method, threshold, x_res, y_res, f_extent, last_beg, Mask_layer):
+    """Process to find path between two point"""
+    # Get point geometry
     point_geom = point.geometry().asPoint()
     npoint_geom = next_point.geometry().asPoint()
+    # Define extent
     extent = getExtent(point_geom, npoint_geom, x_res, y_res, f_extent)
+    # Get clip
     dem_clip = getClip(DEM_layer, outpath, extent, x_res, y_res, '_dem')
     if Mask_layer != None :
         mask_clip = getClip(Mask_layer, outpath, extent, x_res, y_res, '_mask')
         in_array_mask, scr, proj, res = imp_raster(mask_clip)
     else :
         in_array_mask = None
+    # Convert raster clip to array
     in_array, scr, proj, res = imp_raster(dem_clip)
+    # Get map coordinates of points
     beg_point = map2pixel(point_geom, scr)
     end_points = []
     end_point = map2pixel(npoint_geom, scr)
     end_points.append(end_point)
+    # Create graph
     G = rast_to_adv_graph(in_array, res, nb_edges, max_slope, method, threshold, in_array_mask, beg_point, end_point)
+    # Get tracks that will be use to find lcp
     usefull_beg_tracks = getUsefullTrack(extent,tracks_layer,line_id,scr,point_layer,point)
     if next_point.attribute('nature')=='end':
         other_point = None
@@ -1098,17 +1161,18 @@ def betweenPoint(point, next_point, point_layer, DEM_layer, tracks_layer, line_i
             usefull_end_tracks = []
     else:
         usefull_end_tracks = []
+    #Find lcp
     path, beg_list, end_id,last_mouv, w = adv_dijkstra(G,beg_point,last_beg,threshold,end_points,method,usefull_beg_tracks,usefull_end_tracks)
     G = None
     return path, beg_list, beg_point, end_id, last_mouv, w, scr
 
 def advanced_algo(point_layer,DEM_layer,tracks_layer,outpath,nb_edges,method,threshold,max_slope, Mask_layer):
     crs = tracks_layer.crs().toWkt()
-    #resolution raster
+    # resolution raster
     x_res = DEM_layer.rasterUnitsPerPixelX()
     y_res = DEM_layer.rasterUnitsPerPixelY()
 
-    #list line
+    # list line
     lines_list=[]
     for point in point_layer.getFeatures() :
         line_id = point.attribute('L_id')
@@ -1116,7 +1180,7 @@ def advanced_algo(point_layer,DEM_layer,tracks_layer,outpath,nb_edges,method,thr
             lines_list.append(line_id)
 
     inter_count = 0
-    #loop the points for each line
+    # Loop the points for each line
     line_to_change = {}
     for line in lines_list :
         expr = QgsExpression('L_id = %s'%line)
@@ -1132,6 +1196,9 @@ def advanced_algo(point_layer,DEM_layer,tracks_layer,outpath,nb_edges,method,thr
             pprevious_point_it = None
             nature = point.attribute('nature')
             point_id = point.attribute('P_id')
+            # if point equal start or end, it will be keeped, 
+            # otherwise the process will defined which points 
+            # will be set aside, based on mean slope between points
             if nature == 'start' :
                 list_points.append(point_id)
                 expre = QgsExpression('L_id = %s AND P_id= %s'%(line, str(int(point_id)+1)))
@@ -1408,7 +1475,9 @@ def advanced_algo(point_layer,DEM_layer,tracks_layer,outpath,nb_edges,method,thr
                     list_points.append(next_point_id)
                     nature = nnature
         print line,list_points
+        # Loop over the points the algo kept 
         for i,point_id in enumerate(list_points) :
+            # Select a point
             expre = QgsExpression('L_id = %s AND P_id= %s'%(line, str(point_id)))
             reque = QgsFeatureRequest(expre)
             point_it = point_layer.getFeatures(reque)
@@ -1419,6 +1488,7 @@ def advanced_algo(point_layer,DEM_layer,tracks_layer,outpath,nb_edges,method,thr
                 next_point = None
                 point_id = point.attribute('P_id')
                 next_id = list_points[i+1]
+                # And select the next one
                 expre = QgsExpression('L_id = %s AND P_id= %s'%(line, str(next_id)))
                 reque = QgsFeatureRequest(expre)
                 next_point_it = point_layer.getFeatures(reque)
@@ -1432,17 +1502,21 @@ def advanced_algo(point_layer,DEM_layer,tracks_layer,outpath,nb_edges,method,thr
                     f_extent = 2
                     end_id = None
                     print 'L_id = %s AND P_id= %s'%(line, str(next_id))
+                    # Iteration to find lcp, with a more and more wide clip of interest
                     while end_id == None and f_extent < 5:
                         f_extent+=1
+                        # Find lcp between the two points
                         path, beg_list, beg_point, end_id, last_beg, w, scr = betweenPoint(point, next_point, point_layer, DEM_layer, tracks_layer, line, outpath, nb_edges, max_slope, method, threshold, x_res, y_res, f_extent, last_beg, Mask_layer)
 
                     if end_id != None :
+                        # Get lcp and convert it into coord
                         leastCostPath, act_beg = get_adv_lcp(beg_list, path, end_id, method,threshold)
-                        
                         coord_list = ids_to_coord(leastCostPath,scr)
-                        end_pt = leastCostPath[0] 
+                        end_pt = leastCostPath[0]
+                        # Create the vector line
                         create_ridge(tracks_layer,coord_list,line,next_id,next_nature,w)
                         act_beg_pt2, act_beg_pt1 = act_beg.split('|')
+                        # Correction on previous line if the actual line created doesn't begin at the beg point but on the previous line
                         if act_beg_pt2 != beg_point :
                             expr = QgsExpression('L_id = %s AND P_id= %s'%(line, str(next_id)))
                             req = QgsFeatureRequest(expr)
@@ -1454,6 +1528,7 @@ def advanced_algo(point_layer,DEM_layer,tracks_layer,outpath,nb_edges,method,thr
                                 pt_geom = QgsGeometry().fromPoint(first_point).buffer(1,4)
                                 feat_prev_it = tracks_layer.getFeatures(QgsFeatureRequest().setFilterRect(pt_geom.boundingBox()))
                                 rm_ids=[]
+                                # Identify the path to correct
                                 for f_poly in feat_prev_it:
                                     if f_poly.attribute("L_id") == str(line) and f_poly.attribute("P_id") != str(next_id) :
                                         f_poly_geom = f_poly.geometry().asPolyline()
@@ -1514,6 +1589,7 @@ def advanced_algo(point_layer,DEM_layer,tracks_layer,outpath,nb_edges,method,thr
                             commun = False
                             list_commun = []
                             list_cross = []
+                            # Identify if the created line crosses another line
                             for feat_line in feats_line:
                                 if feat_line.id() != last_line.id():
                                     if feat_line.geometry().crosses(last_geom):
@@ -1640,6 +1716,7 @@ def advanced_algo(point_layer,DEM_layer,tracks_layer,outpath,nb_edges,method,thr
                             pass
     rm_ids=[]
     print line_to_change
+    # Execute the changes
     for k in line_to_change.keys():
         expr = QgsExpression("L_id = %s AND nature = 'end'"%(k))
         req = QgsFeatureRequest(expr)
@@ -1704,6 +1781,7 @@ def advanced_algo(point_layer,DEM_layer,tracks_layer,outpath,nb_edges,method,thr
     tracks_layer.commitChanges()
 
 def pointChecked(point_layer) :
+    """Check the fields of the point layer"""
     pr = point_layer.dataProvider()
 
     L_index = pr.fieldNameIndex('L_id')
@@ -1717,6 +1795,7 @@ def pointChecked(point_layer) :
     return point_format
 
 def outputFormat(crs, name='Tracks'):
+    """Create the output file"""
     tracks_layer = QgsVectorLayer('Linestring?crs=' + crs,name,'memory')
     name_L_id = "L_id"
     name_P_id = "P_id"
@@ -1734,6 +1813,7 @@ def outputFormat(crs, name='Tracks'):
     return tracks_layer
 
 def launchAutomatracks(point_layer, DEM_layer, outpath, nb_edges,method,threshold,max_slope, Mask_layer) :
+    """Main function to process lcp for the network"""
     time=Timer()
     time.start()
 
@@ -1755,18 +1835,12 @@ def launchAutomatracks(point_layer, DEM_layer, outpath, nb_edges,method,threshol
         error = QgsVectorFileWriter.writeAsVectorFormat(tracks_layer, outpath, "utf-8", None, "ESRI Shapefile") 
         if error == QgsVectorFileWriter.NoError:
             print "output prepared"
-
         tracks_layer = QgsVectorLayer(outpath,'tracks_layer',"ogr")
         point_format = pointChecked(point_layer)
-
         if point_format == True :
             advanced_algo(point_layer,DEM_layer,tracks_layer,outpath,int(nb_edges),method,int(threshold),int(max_slope), Mask_layer)
-
         time.stop()
         print 'processing Time :'
         time.show()
-
-
-
     else :
         print 'no write access'

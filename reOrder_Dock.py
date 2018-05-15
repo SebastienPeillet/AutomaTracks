@@ -61,12 +61,16 @@ class Timer():
             print delta
 
 class ReorderProcess():
+    """Reorder class"""
     def __init__(self,exutoire,point_reseau):
+        """Init the class with all informations needed to order the network"""
         self.exutoire_layer = exutoire
         self.point_reseau_layer =point_reseau
         self.crs = QgsCoordinateReferenceSystem(self.point_reseau_layer.crs().authid())
+        # Create ouput
         self.output = QgsVectorLayer("Point","point","memory")
         self.output.setCrs(self.crs)
+        # Add fields
         name_T_id = "T_id"
         name_L_id = "L_id"
         name_P_id = "P_id"
@@ -76,7 +80,7 @@ class ReorderProcess():
         if caps & QgsVectorDataProvider.AddAttributes:
             res = provider.addAttributes( [ QgsField(name_T_id, QVariant.String), QgsField(name_L_id, QVariant.String), QgsField(name_P_id, QVariant.String), QgsField(name_nat, QVariant.String) ] )
             self.output.updateFields()
-
+        # Save field index
         self.index_nat = self.point_reseau_layer.fieldNameIndex('nature')
         self.index_pid = self.point_reseau_layer.fieldNameIndex('P_id')
         self.index_order = self.point_reseau_layer.fieldNameIndex('order')
@@ -166,38 +170,50 @@ class ReorderProcess():
                     feat = None
 
     def executeReorder(self):
-        count_order = 0 
+        count_order = 0
+        # loop over exutoire features to process several network
         for exutoire in self.exutoire_layer.getFeatures():
             exutoire_geom = exutoire.geometry().buffer(1,4).boundingBox()
+            # Select the start point that intersects the outlet
             req = QgsFeatureRequest().setFilterRect(exutoire_geom)
             pts_reseau_sortie = self.point_reseau_layer.getFeatures(req)
             for pt_sortie in pts_reseau_sortie :
                 count_order+=1
                 L_id = pt_sortie.attribute("L_id")
+                # Reorder the points of the first line of the network
                 self.reorder(pt_sortie,count_order)
                 nat='end'
                 string = "L_id = %s AND nature='%s'"%(count_order, nat)
                 print string
                 expr = QgsExpression(string)
                 reque = QgsFeatureRequest(expr)
+                # Select the last point of the first line
                 pt_end_it = self.output.getFeatures(reque)
                 pt_end = pt_end_it.next()
                 pt_end_it = None
+                # Make a buffer around the point to define a boundingBox
                 pt_end_geom = pt_end.geometry().buffer(1,4).boundingBox()
                 req = QgsFeatureRequest(QgsExpression("L_id != %s"%(str(L_id)))).setFilterRect(pt_end_geom)
+                # Select the next points 
                 next_ls = self.point_reseau_layer.getFeatures(req)
                 self.l_done.append(L_id)
                 list_next=[]
+                # Fill next_ls list with the next features
                 for next_l in next_ls:
                     list_next.append(next_l)
+                # While there is features in list_next, reorder process continues 
                 while len(list_next) != 0:
                     current_list=list_next
                     list_next = []
+                    # Loop over the next features
                     for next_pt in current_list:
+                        # Get line id
                         L_id = next_pt.attribute("L_id")
                         print L_id
+                        # if the line has not been already reorder
                         if L_id not in self.l_done:
                             count_order+=1
+                            #then reorder
                             self.reorder(next_pt,count_order)
                             string = "L_id = %s AND nature='%s'"%(count_order, nat)
                             print string
@@ -207,9 +223,11 @@ class ReorderProcess():
                             pt_end = pt_end_it.next()
                             pt_end_it = None
                             pt_end_geom = pt_end.geometry().buffer(1,4).boundingBox()
+                            # Find the next feature
                             reque = QgsFeatureRequest(QgsExpression("L_id != %s"%(L_id))).setFilterRect(pt_end_geom)
                             next_ls = self.point_reseau_layer.getFeatures(reque)
                             self.l_done.append(L_id)
+                            # Fill next_ls list again and loop
                             for next_l in next_ls:
                                 list_next.append(next_l)
                     print len(list_next)
@@ -220,6 +238,7 @@ class ReorderProcess():
         change_dict = {}
         change_list = []
         rm_ids=[]
+        #clean lines that aren't a cross border anymore because a small part has been removed
         for end_pt in end_pts :
             end_pt_geom = end_pt.geometry().buffer(1,4).boundingBox()
             end_pt_id = end_pt.id()
@@ -283,10 +302,12 @@ class reOrderDock(QtGui.QDockWidget, FORM_CLASS):
         self.launchButton.clicked.connect(self.launchReOrder)
 
     def initCombo(self):
+        """Init combo box in the dock"""
         self.reseauComboBox.addItems(self.list_vect)
         self.exutoireComboBox.addItems(self.list_vect)
 
     def launchReOrder(self):
+        """Get the parameters and launch the script"""
         layers = self.iface.legendInterface().layers()
         selected_reseau_line = self.reseauComboBox.currentIndex()
         selected_exutoire_line = self.exutoireComboBox.currentIndex()
@@ -297,8 +318,9 @@ class reOrderDock(QtGui.QDockWidget, FORM_CLASS):
 
         time=Timer()
         time.start()
-
+        #create ReorderProcess class
         reorder_process = ReorderProcess(self.exutoire, self.point_reseau)
+        #execute reorder
         output, crs = reorder_process.executeReorder()
 
         time.stop()
