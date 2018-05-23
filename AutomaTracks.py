@@ -51,6 +51,7 @@ class AutomaTracks:
         """
         # Save reference to the QGIS interface
         self.iface = iface
+        self.canvas = iface.mapCanvas()
 
         # initialize plugin directory
         self.plugin_dir = os.path.dirname(__file__)
@@ -190,8 +191,26 @@ class AutomaTracks:
         self.dockwidget.reOrderButton.clicked.connect(self.reOrderScript)
         self.dockwidget.ridgeToPointButton.clicked.connect(self.ridgeToPointScript)
         self.dockwidget.LaunchButton.clicked.connect(self.launchAutomaTracks)
-
+        self.canvas.layersChanged.connect(self.layersUpdate)
     #--------------------------------------------------------------------------
+    def layersUpdate(self):
+        track_text = self.dockwidget.PointInput.currentText()
+        mask_text = self.dockwidget.MaskInput.currentText()
+        dem_text = self.dockwidget.DEMInput.currentText()
+        self.listRastLayer()
+        self.listRastLayerMask()
+        self.listVectLayer()
+        track_ind = self.dockwidget.PointInput.findText(track_text)
+        mask_ind = self.dockwidget.PointInput.findText(mask_text)
+        print mask_ind
+        dem_ind = self.dockwidget.DEMInput.findText(dem_text)
+        if track_ind != -1 :
+            self.dockwidget.PointInput.setCurrentIndex(track_ind)
+        if mask_ind != -1 :
+            self.dockwidget.PointInput.setCurrentIndex(mask_ind)
+        if dem_ind != -1 :
+            self.dockwidget.DEMInput.setCurrentIndex(dem_ind)
+        return None
 
     def onClosePlugin(self):
         """Cleanup necessary items here when plugin dockwidget is closed"""
