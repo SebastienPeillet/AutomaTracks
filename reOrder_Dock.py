@@ -250,22 +250,24 @@ class ReorderProcess():
             for int_pt in self.output.getFeatures(req):
                 lid_int_pt = int_pt.attribute("L_id")
                 int_pts.append(int_pt)
-            if len(int_pts) == 1:
+            if len(int_pts) == 1 :
                 rm_ids.append(end_pt_id)
-                if end_lid in change_dict:
-                    change_dict[lid_int_pt] = change_dict[end_lid]
+                if int(end_lid) in change_dict:
+                    change_dict[int(lid_int_pt)] = change_dict[int(end_lid)]
                 else :
-                    change_dict[lid_int_pt] = end_lid
+                    change_dict[int(lid_int_pt)] = int(end_lid)
         print change_dict
-        for ch in change_dict.keys():
-            end_lid = change_dict[ch]
+        change_dict = sorted(change_dict.items(), key=lambda t: t[0])
+        for ch_tuple in change_dict:
+            print ch_tuple[0]
+            end_lid = str(ch_tuple[1])
             end_pid = None
             for end_pt in self.output.getFeatures(QgsFeatureRequest(QgsExpression("L_id = '%s' and nature = '%s'"%(end_lid,"end")))):
                 if end_pid == None :
                     end_pid = end_pt.attribute("P_id")
                 elif int(end_pid) < int(end_pt.attribute("P_id")):
                     end_pid = end_pt.attribute("P_id")
-            expr = QgsExpression("L_id = '%s'"%(ch))
+            expr = QgsExpression("L_id = '%s'"%(str(ch_tuple[0])))
             req = QgsFeatureRequest(expr)
             for ch_pt in self.output.getFeatures(req):
                 ch_pt_id = ch_pt.id()
