@@ -296,13 +296,54 @@ class reOrderDock(QtGui.QDockWidget, FORM_CLASS):
         self.exutoire = None
         self.point_reseau = None
         self.iface = iface
+        self.canvas = self.iface.mapCanvas()
         self.list_vect = list_vect
         self.list_vect_ind = list_vect_ind
         self.initCombo()
         self.launchButton.clicked.connect(self.launchReOrder)
+        self.canvas.layersChanged.connect(self.layersUpdate)
+        self.connect(self, QtCore.SIGNAL('triggered()'), self.closeEvent)
+
+    def closeEvent(self, event):
+        print "Closing"
+        self.close()
 
     def initCombo(self):
         """Init combo box in the dock"""
+        self.reseauComboBox.addItems(self.list_vect)
+        self.exutoireComboBox.addItems(self.list_vect)
+
+    def layersUpdate(self):
+        reseau_text = self.reseauComboBox.currentText()
+        exe_text = self.exutoireComboBox.currentText()
+        self.listVectLayer()
+        reseau_ind = self.reseauComboBox.findText(reseau_text)
+        exe_ind = self.exutoireComboBox.findText(exe_text)
+        if reseau_ind != -1 :
+            self.reseauComboBox.setCurrentIndex(reseau_ind)
+        if exe_ind != -1 :
+            self.exutoireComboBox.setCurrentIndex(exe_ind)
+        return None
+
+    def listVectLayer(self):
+        """List line layer for the track selection"""
+
+        # clear list and index
+        self.reseauComboBox.clear()
+        self.reseauComboBox.clearEditText()
+        self.exutoireComboBox.clear()
+        self.exutoireComboBox.clearEditText()
+        self.list_vect = []
+        self.list_vect_ind = []
+        layers = self.iface.legendInterface().layers()
+        layer_list = []
+        index = 0
+        for layer in layers:
+            if layer.type() == 0:
+                if layer.geometryType() == 0:
+                    self.list_vect.append(layer.name())
+                    self.list_vect_ind.append(index)
+            index += 1
         self.reseauComboBox.addItems(self.list_vect)
         self.exutoireComboBox.addItems(self.list_vect)
 
@@ -329,3 +370,6 @@ class reOrderDock(QtGui.QDockWidget, FORM_CLASS):
         error = QgsVectorFileWriter.writeAsVectorFormat(output, self.output_path, "utf-8", crs, "ESRI Shapefile") 
         if error == QgsVectorFileWriter.NoError:
             print "success!"
+        out_layer = self.iface.addVectorLayer(self.output_path, "", "ogr")
+        if not out_layer:
+            print "Layer failed to load!"

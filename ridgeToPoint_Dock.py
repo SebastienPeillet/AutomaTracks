@@ -25,7 +25,7 @@ import os
 
 from PyQt4.QtGui import QColor
 from PyQt4 import QtGui, uic
-from PyQt4.QtCore import pyqtSignal, QVariant
+from PyQt4.QtCore import pyqtSignal, QVariant, Qt
 from PyQt4 import QtCore
 from qgis.core import QgsVectorLayer, QgsVectorFileWriter,QgsVectorDataProvider, QgsField, \
                         QgsExpression, QgsFeatureRequest, QgsRasterPipe, QgsRasterFileWriter, \
@@ -74,6 +74,7 @@ class ridgeToPointDock(QtGui.QDockWidget, FORM_CLASS):
         self.id_line = None
         self.min_dist = None
         self.iface = iface
+        self.canvas = self.iface.mapCanvas()
         self.list_vect = list_vect
         self.list_vect_ind = list_vect_ind
         self.list_rast = list_rast
@@ -81,6 +82,12 @@ class ridgeToPointDock(QtGui.QDockWidget, FORM_CLASS):
         self.initCombo()
         self.launchButton.clicked.connect(self.launchR2P)
         self.connect(self.lineComboBox, QtCore.SIGNAL("currentIndexChanged(const QString)"),self.idComboInit)
+        self.canvas.layersChanged.connect(self.layersUpdate)
+        self.connect(self, QtCore.SIGNAL('triggered()'), self.closeEvent)
+
+    def closeEvent(self, event):
+        print "Closing"
+        self.close()
 
     def initCombo(self):
         """Fill layer combo box of the dock"""
@@ -93,26 +100,76 @@ class ridgeToPointDock(QtGui.QDockWidget, FORM_CLASS):
 
     def idComboInit(self):
         """Fill field combo box"""
-        layers = self.iface.legendInterface().layers()
-        selected_line = self.lineComboBox.currentIndex()
-        self.lines_layer = layers[self.list_vect_ind[selected_line]]
         self.idLineComboBox.clear()
         attr_ind = self.lines_layer.attributeList()
         attr_list = []
         for ind in attr_ind :
             attr_list.append(self.lines_layer.attributeDisplayName(ind))
-        print attr_list
         self.idLineComboBox.addItems(attr_list)
+
+    def layersUpdate(self):
+        track_text = self.lineComboBox.currentText()
+        dem_text = self.DEMComboBox.currentText()
+        self.listRastLayer()
+        self.listVectLayer()
+        track_ind = self.lineComboBox.findText(track_text)
+        dem_ind = self.DEMComboBox.findText(dem_text)
+        if track_ind != -1 :
+            self.lineComboBox.setCurrentIndex(track_ind)
+        if dem_ind != -1 :
+            self.DEMComboBox.setCurrentIndex(dem_ind)
+        layers = self.iface.legendInterface().layers()
+        selected_line = self.lineComboBox.currentIndex()
+        self.lines_layer = layers[self.list_vect_ind[selected_line]]
+        self.idComboInit()
+        return None
+
+    def listRastLayer(self):
+        """List raster inputs for the DEM selection"""
+
+        # clear list and index
+        self.DEMComboBox.clear()
+        self.DEMComboBox.clearEditText()
+        self.list_rast = []
+        self.list_rast_ind = []
+        layers = self.iface.legendInterface().layers()
+        layer_list = []
+        index = 0
+        for layer in layers:
+            if layer.type() == 1:
+                self.list_rast.append(layer.name())
+                self.list_rast_ind.append(index)
+            index += 1
+        self.DEMComboBox.addItems(self.list_rast)
+
+    def listVectLayer(self):
+        """List line layer for the track selection"""
+
+        # clear list and index
+        self.lineComboBox.clear()
+        self.lineComboBox.clearEditText()
+        self.list_vect = []
+        self.list_vect_ind = []
+        layers = self.iface.legendInterface().layers()
+        layer_list = []
+        index = 0
+        for layer in layers:
+            if layer.type() == 0:
+                if layer.geometryType() == 1:
+                    self.list_vect.append(layer.name())
+                    self.list_vect_ind.append(index)
+            index += 1
+        self.lineComboBox.addItems(self.list_vect)
 
     def launchR2P(self):
         """Launch the conversion"""
         layers = self.iface.legendInterface().layers()
         # Get index of combo box
         selected_line = self.lineComboBox.currentIndex()
-        selected_dem = self.DEMComboBox.currentIndex()
+        selected_dem_layer = self.DEMComboBox.currentIndex()
         # Get layer that fit with the combo box index
         self.lines_layer = layers[self.list_vect_ind[selected_line]]
-        self.dem_layer = layers[self.list_rast_ind[selected_dem]]
+        self.dem_layer = layers[self.list_rast_ind[selected_dem_layer]]
         self.min_dist = self.minLengthBox.value()
         self.id_line = self.idLineComboBox.currentText()
         self.output_path = self.outputEdit.text()
@@ -121,15 +178,14 @@ class ridgeToPointDock(QtGui.QDockWidget, FORM_CLASS):
         time.start()
         tmp_path = os.path.dirname(self.lines_layer.source())
         # Extract all points of interest (start of line, end of line, peak, pass) from polyline layer
-        pointPassage,crs,dem= passPointSeek(self.lines_layer,self.id_line,self.dem_layer, tmp_path)
+        pointPassage,crs,self.dem_layer= passPointSeek(self.lines_layer,self.id_line,self.dem_layer, tmp_path)
         QgsVectorFileWriter.writeAsVectorFormat(pointPassage, os.path.dirname(self.output_path)+'\\temp.shp', "utf-8", crs, "ESRI Shapefile")
         pointPassage = None
         pointPassage = QgsVectorLayer(os.path.dirname(self.output_path)+'\\temp.shp','pointpassage',"ogr")
 
-        # Remove small ridge part
-        print 'Remove small ridge part'
+        # print 'Remove small ridge part'
         ids_rem = []
-        # Remove the ridge part if it's onlt composed of two vertex that are too close
+        orphans = []
         for pt in pointPassage.getFeatures():
             pt_id = pt.id()
             pt_geom = pt.geometry().asPoint()
@@ -152,38 +208,145 @@ class ridgeToPointDock(QtGui.QDockWidget, FORM_CLASS):
                                 ids_rem.append(pt_id)
                             if pt_near_id not in ids_rem :
                                 ids_rem.append(pt_near_id)
+                            # if pt_Tid in orphans :
+                                # orphans.remove(pt_Tid)
+                            # if pt_near_Tid in orphans :
+                                # orphans.remove(pt_near_Tid)
+                            BB1 = pt.geometry().buffer(3,4).boundingBox()
+                            BB2 = pt_near.geometry().buffer(3,4).boundingBox()
+                            for feat1 in pointPassage.getFeatures(QgsFeatureRequest(QgsExpression("nature='start' or nature='end'")).setFilterRect(BB1)):
+                                tid1 = feat1.attribute("T_id")
+                                if feat1.id() not in ids_rem and tid1 not in orphans :
+                                    orphans.append(tid1)
+                            for feat2 in pointPassage.getFeatures(QgsFeatureRequest(QgsExpression("nature='start' or nature='end'")).setFilterRect(BB2)):
+                                tid2 = feat2.attribute("T_id")
+                                if feat2.id() not in ids_rem and tid2 not in orphans:
+                                    orphans.append(tid2)
+
         pointPassage.startEditing()
-        #Remove the points of the ridge points
         pointPassage.dataProvider().deleteFeatures(ids_rem)
         pointPassage.commitChanges()
 
-
         #Find link point between seperate line
-        print 'Find link point between seperate line'
+        # print 'Find link point between seperate line'
         already_done = []
         geom_to_change = []
-        # Because some ridge part has been removed, this step will join the parts that remain
+        for pt in pointPassage.getFeatures():
+            if pt.attribute('T_id') in orphans :
+                pt_id = pt.id()
+                pt_nat = pt.attribute('nature')
+                if pt_nat == 'end' :
+                    pt_nat_opp = 'start'
+                else :
+                    pt_nat_opp = 'end'
+                pt_opp_it = None
+                pt_opp_it = pointPassage.getFeatures(QgsFeatureRequest(QgsExpression("L_id = '%s' and nature='%s'"%(pt.attribute('L_id'),pt_nat_opp))))
+                pt_opp = next(pt_opp_it)
+                pt_opp_geom = pt_opp.geometry().asPoint()
+                pt_opp_buff = pt_opp.geometry().buffer(1,4).boundingBox()
+                pt_opp_near_it = pointPassage.getFeatures(QgsFeatureRequest(QgsExpression("L_id != '%s'"%(pt_opp.attribute('L_id')))))
+                list_opp = [pt_opp_near.attribute('T_id') for pt_opp_near in pt_opp_near_it]
+                list_opp.append(pt_opp.attribute('T_id'))
+                pt_geom = pt.geometry().asPoint()
+                pt_x,pt_y = pt_geom
+                bounding_box_buff = QgsRectangle(pt_x - self.min_dist*2, pt_y - self.min_dist*2, pt_x + self.min_dist*2, pt_y + self.min_dist*2)
+                pts_near_it = pointPassage.getFeatures(QgsFeatureRequest().setFilterRect(bounding_box_buff))
+                list_id=[]
+                w0 = 0
+                id0 = pt_id
+                act_dist = None
+                list_line=[]
+                for pt_near in pts_near_it :
+                    pt_near_id = pt_near.id()
+                    pt_near_Tid = pt_near.attribute('T_id')
+                    pt_near_geom = pt_near.geometry().asPoint()
+                    if pt_near_id != pt_id and pt_near_Tid in orphans and pt_near_geom != pt_opp_geom:
+                        dist = math.sqrt(pt_geom.sqrDist(pt_near_geom))
+                        if dist != 0 and dist < self.min_dist*2 :
+                            pt_Tid = pt.attribute('T_id')
+                            res = pt_Tid.split('p')
+                            l_id1 = res[0]
+                            res = pt_near_Tid.split('p')
+                            l_id2 = res[0]
+                            if pt_id not in already_done and l_id1 != l_id2 and l_id2 not in list_line and pt_Tid[-1] in ['s','e'] and pt_near_Tid[-1] in ['s','e']:
+                                list_id.append(pt_near_id)
+                                list_line.append(l_id2)
+                                w0+= dist
+                already_done.append(pt_id)
+                for id in list_id :
+                    point1 = next(pointPassage.getFeatures(QgsFeatureRequest().setFilterFid(id)))
+                    point1_geom = point1.geometry().asPoint()
+                    pt1_x,pt1_y = point1_geom
+                    bounding_box_buff1 = QgsRectangle(pt_x - self.min_dist*2, pt_y - self.min_dist*2, pt_x + self.min_dist*2, pt_y + self.min_dist*2)
+                    pts1_near_it = pointPassage.getFeatures(QgsFeatureRequest().setFilterRect(bounding_box_buff1))
+                    w=0
+                    for opoint in pts1_near_it :
+                        if id != opoint.id() and opoint.attribute('T_id') in orphans:
+                            opoint_geom = opoint.geometry().asPoint()
+                            p = math.sqrt(point1_geom.sqrDist(opoint_geom))
+                            w += p
+                    if w < w0 :
+                        w0 = w
+                        id0 = opoint.id()
+                    already_done.append(id)
+                list_id.append(pt_id)
+                try :
+                    list_id.remove(id0)
+                except ValueError:
+                    continue
+                change=[id0,list_id]
+                geom_to_change.append(change)
+
+        for change in geom_to_change :
+            id_fix = change[0]
+            req = QgsFeatureRequest().setFilterFid(id_fix)
+            point_fix_it = pointPassage.getFeatures(req)
+            try :
+                for point_fix in point_fix_it :
+                    geom_fix = point_fix.geometry()
+                    # try :
+                        # orphans.remove(point_fix.attribute("T_id"))
+                    # except ValueError :
+                        # continue
+                ids_change = change[1]
+                for id_change in ids_change :
+                    req = QgsFeatureRequest().setFilterFid(id_change)
+                    point_change_it = pointPassage.getFeatures(req)
+                    point_change = next(point_change_it)
+                    # try :
+                        # orphans.remove(point_change.attribute("T_id"))
+                    # except ValueError :
+                        # continue
+                    pointPassage.startEditing()
+                    pointPassage.dataProvider().changeGeometryValues({id_change : geom_fix})
+                    pointPassage.commitChanges()
+                    pointPassage.updateExtents()
+            except StopIteration:
+                pass
+
+        # print 'Find link point between seperate line'
+        already_done = []
+        geom_to_change = []
         for pt in pointPassage.getFeatures():
             pt_id = pt.id()
             pt_geom = pt.geometry().asPoint()
             pt_x,pt_y = pt_geom
-            bounding_box_buff = QgsRectangle(pt_x - self.min_dist, pt_y - self.min_dist, pt_x + self.min_dist, pt_y + self.min_dist) 
+            bounding_box_buff = QgsRectangle(pt_x - self.min_dist, pt_y - self.min_dist, pt_x + self.min_dist, pt_y + self.min_dist)
             pts_near_it = pointPassage.getFeatures(QgsFeatureRequest().setFilterRect(bounding_box_buff))
             list_id=[]
             w0 = 0
             id0 = pt_id
             for pt_near in pts_near_it :
                 pt_near_id = pt_near.id()
+                pt_near_Tid = pt_near.attribute('T_id')
                 if pt_near_id != pt_id :
                     dist = math.sqrt(pt_geom.sqrDist(pt_near.geometry().asPoint()))
                     if dist != 0 and dist < self.min_dist :
                         pt_Tid = pt.attribute('T_id')
                         res = pt_Tid.split('p')
                         l_id1 = res[0]
-                        pt_near_Tid = pt_near.attribute('T_id')
                         res = pt_near_Tid.split('p')
                         l_id2 = res[0]
-                        # If the points are close, not with the same L_id, and they are start/end points, we join them
                         if pt_id not in already_done and l_id1 != l_id2 and pt_Tid[-1] in ['s','e'] and pt_near_Tid[-1] in ['s','e']:
                             list_id.append(pt_near_id)
                             w0+= dist
@@ -193,9 +356,8 @@ class ridgeToPointDock(QtGui.QDockWidget, FORM_CLASS):
                 point1_geom = point1.geometry().asPoint()
                 pt1_x,pt1_y = point1_geom
                 bounding_box_buff1 = QgsRectangle(pt_x - self.min_dist, pt_y - self.min_dist, pt_x + self.min_dist, pt_y + self.min_dist)
-                pts1_near_it = pointPassage.getFeatures(QgsFeatureRequest().setFilterRect(bounding_box_buff))
+                pts1_near_it = pointPassage.getFeatures(QgsFeatureRequest().setFilterRect(bounding_box_buff1))
                 w=0
-                # Find the centroid of points
                 for opoint in pts1_near_it :
                     if id != opoint.id() :
                         opoint_geom = opoint.geometry().asPoint()
@@ -206,10 +368,13 @@ class ridgeToPointDock(QtGui.QDockWidget, FORM_CLASS):
                     id0 = opoint.id()
                 already_done.append(id)
             list_id.append(pt_id)
-            list_id.remove(id0)
+            try :
+                list_id.remove(id0)
+            except ValueError:
+                continue
             change=[id0,list_id]
             geom_to_change.append(change)
-        # Make modification
+
         for change in geom_to_change :
             id_fix = change[0]
             req = QgsFeatureRequest().setFilterFid(id_fix)
@@ -226,18 +391,16 @@ class ridgeToPointDock(QtGui.QDockWidget, FORM_CLASS):
             except StopIteration:
                 pass
 
-        # Remove points too close to the end/start of a line
-        print 'Remove small ridge part at the end/start of a line'
+        #Remove small ridge part at the end/start of a line
+        # print 'Remove small ridge part at the end/start of a line'
         geom_to_change = []
+        list_id=[]
         for pt in pointPassage.getFeatures():
             pt_id = pt.id()
             pt_geom = pt.geometry().asPoint()
             pt_x,pt_y = pt_geom
             bounding_box_buff = QgsRectangle(pt_x - self.min_dist, pt_y - self.min_dist, pt_x + self.min_dist, pt_y + self.min_dist) 
             pts_near_it = pointPassage.getFeatures(QgsFeatureRequest().setFilterRect(bounding_box_buff))
-            list_id=[]
-            w0 = 0
-            id0 = pt_id
             for pt_near in pts_near_it :
                 pt_near_id = pt_near.id()
                 if pt_near_id != pt_id :
@@ -249,33 +412,44 @@ class ridgeToPointDock(QtGui.QDockWidget, FORM_CLASS):
                         pt_near_Tid = pt_near.attribute('T_id')
                         res = pt_near_Tid.split('p')
                         l_id2 = res[0]
-                        if l_id1 == l_id2 and pt_Tid[-1] in ['s','e'] and pt_near_Tid[-1] not in ['s','e']:
+                        if l_id1 == l_id2 and pt_Tid[-1] in ['s','e'] and pt_near_Tid[-1] not in ['s','e'] and pt_near_Tid not in list_id:
                             change = [pt_id,pt_near_id]
+                            list_id.append(pt_near_Tid)
                             geom_to_change.append(change)
         id_rm = []
+        # print geom_to_change
+
         for change in geom_to_change :
             id_fix = change[0]
+            req = QgsFeatureRequest().setFilterFid(id_fix)
+            point_fix_it = pointPassage.getFeatures(req)
+            point_fix = next(point_fix_it)
             try :
                 id_change = change[1]
-                pointPassage.startEditing()
                 req = QgsFeatureRequest().setFilterFid(id_change)
                 point_ch_it = pointPassage.getFeatures(req)
-                for point_ch in point_ch_it :
-                    pointPassage.changeAttributeValue(id_fix,2,point_ch.attribute('P_id'))
-                    id_rm.append(id_change)
-                    pointPassage.commitChanges()
+                for point_ch in point_ch_it :                
+                    if point_fix.attribute('T_id')[-1] == 'e' :
+                        if int(point_ch.attribute('P_id')) < int(point_fix.attribute('P_id')) :
+                            pointPassage.startEditing()
+                            pointPassage.changeAttributeValue(id_fix,2,point_ch.attribute('P_id'))
+                            pointPassage.commitChanges()
+                    else :
+                        pointPassage.startEditing()
+                        pointPassage.changeAttributeValue(id_fix,2,point_ch.attribute('P_id'))
+                        pointPassage.commitChanges()
+                id_rm.append(id_change)
             except StopIteration:
                 pass
         pointPassage.startEditing()
-        # Remove points
         pointPassage.deleteFeatures(id_rm)
         pointPassage.commitChanges()
         pointPassage.updateExtents()
 
-
+        #First attempt
+        # print "First attempt"
         already_done = []
         geom_to_change = []
-        # For two points that are two close, remove the lowest
         for pt in pointPassage.getFeatures():
             pt_id = pt.id()
             pt_geom = pt.geometry().asPoint()
@@ -297,19 +471,20 @@ class ridgeToPointDock(QtGui.QDockWidget, FORM_CLASS):
                         res = pt_near_Tid.split('p')
                         l_id2 = res[0]
                         if pt_id not in already_done and pt_near_id not in already_done and l_id1 == l_id2 :
+                            pt1_elev = self.dem_layer.dataProvider().identify(pt_geom,QgsRaster.IdentifyFormatValue)
+                            pt2_elev = self.dem_layer.dataProvider().identify(pt_near.geometry().asPoint(),QgsRaster.IdentifyFormatValue)
                             already_done.append(pt_id)
                             already_done.append(pt_near_id)
-                            pt1_elev = dem.dataProvider().identify(pt_geom,QgsRaster.IdentifyFormatValue)
-                            pt2_elev = dem.dataProvider().identify(pt_near.geometry().asPoint(),QgsRaster.IdentifyFormatValue)
                             if pt1_elev < pt2_elev :
                                 change = pt_Tid
                             else :
                                 change = pt_near_Tid
                             geom_to_change.append(change)
-        print geom_to_change
+        # print geom_to_change
         for change in geom_to_change :
+            # print 'change : ',change
             id_fix = change
-            req = QgsFeatureRequest().setFilterExpression(u"\"T_id\" LIKE '{0}'".format(id_fix))
+            req = QgsFeatureRequest().setFilterExpression("T_id = '%s'"%(id_fix))
             point_rm_it = pointPassage.getFeatures(req)
             point_rm = point_rm_it.next()
             id_rm = point_rm.id()
@@ -317,24 +492,38 @@ class ridgeToPointDock(QtGui.QDockWidget, FORM_CLASS):
             point_pid = int(point_rm.attribute('P_id'))
             nat = point_rm.attribute('nature')
             fin = 0
+            count = 1
+            found =False
             if nat == 'end' :
                 fin = 1
-            while fin == 0 :
-                req = QgsFeatureRequest().setFilterExpression(u"\"L_id\" LIKE '{0}' and \"P_id\" LIKE '{1}'".format(line_id,str(point_pid+1)))
-                point_nxt_it = pointPassage.getFeatures(req)
-                for point_nxt in point_nxt_it :
-                    pointPassage.startEditing()
-                    pointPassage.changeAttributeValue(point_nxt.id(),2,str(point_pid))
-                    pointPassage.commitChanges()
-                    current_id = point_nxt.attribute('T_id')
-                    if current_id[-1] == 'e' :
-                        fin = 1
-                    print current_id
-                    point_pid+=1
-            pointPassage.startEditing()
-            # Make modification
-            pointPassage.deleteFeatures([id_rm])
-            pointPassage.commitChanges()
+            else :
+                pointPassage.startEditing()
+                while True:
+                    if found == True :
+                        point_pid+=1
+                    req = QgsFeatureRequest().setFilterExpression("L_id ='%s' and P_id = '%s'"%(line_id,str(point_pid+count)))
+                    point_nxt_it = pointPassage.getFeatures(req)
+                    found =False
+                    point_nxt= None
+                    try:
+                        point_nxt = next(point_nxt_it)
+                    except StopIteration:
+                        point_nxt = None
+                        continue
+                    if point_nxt != None :
+                        pointPassage.changeAttributeValue(point_nxt.id(),2,str(point_pid))
+                        current_id = point_nxt.attribute('T_id')
+                        if current_id[-1] == 'e' :
+                            break
+                        #print current_id
+                        found = True
+                        count = 1
+                    else :
+                        count+=1
+                        found = False
+                pointPassage.deleteFeatures([id_rm])
+                pointPassage.commitChanges()
+        pointPassage.updateExtents()
 
 
         time.stop()
@@ -343,16 +532,19 @@ class ridgeToPointDock(QtGui.QDockWidget, FORM_CLASS):
         error = QgsVectorFileWriter.writeAsVectorFormat(pointPassage, self.output_path, "utf-8", crs, "ESRI Shapefile") 
         if error == QgsVectorFileWriter.NoError:
             print "success!"
+        out_layer = self.iface.addVectorLayer(self.output_path, "", "ogr")
+        if not out_layer:
+            print "Layer failed to load!"
 
             
-def passPointSeek(crete_layer,ID_crete,dem, PassagePoint):
+def passPointSeek(crete_layer,ID_crete,dem_layer, PassagePoint):
     #Load ridge line layer
     inCRS = crete_layer.crs().authid()
     crs = QgsCoordinateReferenceSystem(inCRS)
 
-    #Load dem layer
-    x_res = dem.rasterUnitsPerPixelX()
-    y_res = dem.rasterUnitsPerPixelY()
+    #Load dem_layer layer
+    x_res = dem_layer.rasterUnitsPerPixelX()
+    y_res = dem_layer.rasterUnitsPerPixelY()
         
     #Create memory layer for the result :
     pointPassage=QgsVectorLayer("Point","point",'memory')
@@ -375,14 +567,10 @@ def passPointSeek(crete_layer,ID_crete,dem, PassagePoint):
         feat_L_id = feature.attribute(ID_crete)
         geomType = feature.geometry().wkbType()
         if geomType == 2 :
-            # Get original geometry of the feature
             geom = feature.geometry().asPolyline()
             nb = len(geom)
-            # Get a copy of the geometry feature that we will change
             geom_clean = feature.geometry().asPolyline()
             ind=0
-            # for each part of the polyline, get the azimuth to determine
-            # how to 'split' the part, must fit the raster resolution
             for i in range(0,nb-1) :
                 pt1 = geom[i]
                 x1 = pt1.x()
@@ -409,16 +597,15 @@ def passPointSeek(crete_layer,ID_crete,dem, PassagePoint):
                 pt1 = QgsPoint(x1,y1)
                 pt2 = QgsPoint(x2,y2)
                 dist = math.sqrt(pt1.sqrDist(pt2))
-                #Get azimuth
                 if dist > math.sqrt(x_res*x_res+y_res*y_res)+1 :
                     azimuth = pt1.azimuth(pt2)
                     if azimuth % 10 != 0 :
                         decoup_dist = math.sqrt(x_res*x_res+y_res*y_res)
                     else :
                         decoup_dist = x_res
+
                     tot_distance=0
                     pts=[]
-                    # Get all point from the 'split' operation in addition to the construction points
                     while tot_distance/x_res < dist/x_res :
                         tot_distance+=decoup_dist
                         xv = round(tot_distance*math.sin(math.radians(azimuth)))
@@ -426,9 +613,8 @@ def passPointSeek(crete_layer,ID_crete,dem, PassagePoint):
                         # print xv,yv, tot_distance,azimuth, x1,y1,x2,y2
                         pt = QgsPoint(pt1.x()+xv,pt1.y()+yv)
                         pts.append(pt)
-                    pt1_elev = dem.dataProvider().identify(pt1,QgsRaster.IdentifyFormatValue)
-                    pt2_elev = dem.dataProvider().identify(pt2,QgsRaster.IdentifyFormatValue)
-                    # Init the min and max elevation with the start and end points of the part
+                    pt1_elev = dem_layer.dataProvider().identify(pt1,QgsRaster.IdentifyFormatValue)
+                    pt2_elev = dem_layer.dataProvider().identify(pt2,QgsRaster.IdentifyFormatValue)
                     min_elev = min(pt1_elev,pt2_elev)
                     max_elev = max(pt1_elev,pt2_elev)
                     points_elev=[]
@@ -436,10 +622,8 @@ def passPointSeek(crete_layer,ID_crete,dem, PassagePoint):
                     max_list = None
                     max_id = None
                     min_id = None
-                    # If there is intermediate point that is lower/higher, 
-                    # add it to the feature geometry as vertex
                     for j,point in enumerate(pts) :
-                        elev = dem.dataProvider().identify(point,QgsRaster.IdentifyFormatValue)
+                        elev = dem_layer.dataProvider().identify(point,QgsRaster.IdentifyFormatValue)
                         if elev < min_elev :
                             if min_list == None or elev < min_list :
                                 min_list = elev
@@ -463,56 +647,45 @@ def passPointSeek(crete_layer,ID_crete,dem, PassagePoint):
                     elif min_id != None and max_id == None:
                         geom_clean.insert(i+1+ind,pts[min_id])
                         ind+=1
-            # Get number of vertex in the geometry
             nb = len(geom_clean)
             elev_list = []
-            # Make a list with all elevation points
             for point in geom_clean :
-                elev = dem.dataProvider().identify(point,QgsRaster.IdentifyFormatValue)
+                elev = dem_layer.dataProvider().identify(point,QgsRaster.IdentifyFormatValue)
                 elev_list.append(elev.results()[1])
             count = 0
-            # Loop over index
             for i in range(0,nb) :
-                # Create new point feature
                 feat_point= QgsFeature()
-                # Put coordinates in it
-                feat_point.setGeometry(QgsGeometry.fromPoint(geom_clean[i]))
                 try :
-                    # Add the point feature to the layer if it's the first point
                     if i == 0 :
+                        feat_point.setGeometry(QgsGeometry.fromPoint(geom[0]))
                         nat='s'
                         t_id = 'l'+str(feat_L_id)+'p'+str(count)+nat
                         feat_point.setAttributes([t_id,feat_L_id,count,'start'])
                         count+=1
                         pointPassage.dataProvider().addFeatures([feat_point])
-                    # Add the point feature to the layer if it's the last point
                     elif i == nb-1 :
+                        feat_point.setGeometry(QgsGeometry.fromPoint(geom[-1]))
                         nat='e'
                         t_id = 'l'+str(feat_L_id)+'p'+str(count)+nat
                         feat_point.setAttributes([t_id,feat_L_id,count,'end'])
                         count+=1
                         pointPassage.dataProvider().addFeatures([feat_point])
-                    # No test between the second and the fourth vertexes
                     elif i < 3 :
                         pass
-                    # No test between the last fourth and the last second vertexes
                     elif i > nb-3 :
                         pass
-                    #otherwise
                     else :
-                        # Get the min/max elevation for the neighboured vertexes
+                        feat_point.setGeometry(QgsGeometry.fromPoint(geom_clean[i]))
                         min_elev1 = min(elev_list[i-3],elev_list[i-2],elev_list[i-1])
                         min_elev2 = min(elev_list[i+3],elev_list[i+2],elev_list[i+1])
                         max_elev1 = max(elev_list[i-3],elev_list[i-2],elev_list[i-1])
                         max_elev2 = max(elev_list[i+3],elev_list[i+2],elev_list[i+1])
-                        # If the current point is lower than the other, we keep it
                         if elev_list[i]< min_elev1 and elev_list[i]<= min_elev2 :
                             nat='d'
                             t_id = 'l'+str(feat_L_id)+'p'+str(count)+nat
                             feat_point.setAttributes([t_id,feat_L_id,count,'col'])
                             count+=1
                             pointPassage.dataProvider().addFeatures([feat_point])
-                        # If the current point is higher than the other, we keep it
                         if elev_list[i] >= max_elev1 and elev_list[i]> max_elev2 :
                             nat='t'
                             t_id = 'l'+str(feat_L_id)+'p'+str(count)+nat
@@ -525,4 +698,4 @@ def passPointSeek(crete_layer,ID_crete,dem, PassagePoint):
                     pass
         else :
             print 'no multiline'
-    return pointPassage,crs,dem
+    return pointPassage,crs,dem_layer
