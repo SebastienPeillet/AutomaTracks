@@ -18,7 +18,7 @@
     <rect>
      <x>30</x>
      <y>20</y>
-     <width>71</width>
+     <width>221</width>
      <height>16</height>
     </rect>
    </property>
@@ -31,7 +31,7 @@
     <rect>
      <x>30</x>
      <y>220</y>
-     <width>81</width>
+     <width>221</width>
      <height>16</height>
     </rect>
    </property>
@@ -62,7 +62,7 @@
   <widget class="QSpinBox" name="minLengthBox">
    <property name="geometry">
     <rect>
-     <x>180</x>
+     <x>210</x>
      <y>140</y>
      <width>42</width>
      <height>22</height>
@@ -77,8 +77,8 @@
     <rect>
      <x>30</x>
      <y>80</y>
-     <width>46</width>
-     <height>13</height>
+     <width>221</width>
+     <height>16</height>
     </rect>
    </property>
    <property name="text">
@@ -90,7 +90,7 @@
     <rect>
      <x>30</x>
      <y>140</y>
-     <width>141</width>
+     <width>181</width>
      <height>21</height>
     </rect>
    </property>
@@ -103,7 +103,7 @@
     <rect>
      <x>30</x>
      <y>170</y>
-     <width>91</width>
+     <width>221</width>
      <height>16</height>
     </rect>
    </property>
@@ -124,7 +124,7 @@
   <widget class="QPushButton" name="launchButton">
    <property name="geometry">
     <rect>
-     <x>180</x>
+     <x>178</x>
      <y>270</y>
      <width>75</width>
      <height>23</height>

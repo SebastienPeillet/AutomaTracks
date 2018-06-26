@@ -38,7 +38,7 @@
     <rect>
      <x>20</x>
      <y>20</y>
-     <width>111</width>
+     <width>211</width>
      <height>16</height>
     </rect>
    </property>
@@ -51,7 +51,7 @@
     <rect>
      <x>20</x>
      <y>90</y>
-     <width>91</width>
+     <width>211</width>
      <height>16</height>
     </rect>
    </property>
@@ -74,7 +74,7 @@
     <rect>
      <x>20</x>
      <y>160</y>
-     <width>91</width>
+     <width>211</width>
      <height>16</height>
     </rect>
    </property>
@@ -85,7 +85,7 @@
   <widget class="QPushButton" name="launchButton">
    <property name="geometry">
     <rect>
-     <x>180</x>
+     <x>160</x>
      <y>230</y>
      <width>75</width>
      <height>23</height>
