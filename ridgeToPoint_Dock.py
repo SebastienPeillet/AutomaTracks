@@ -100,7 +100,10 @@ class ridgeToPointDock(QtGui.QDockWidget, FORM_CLASS):
 
     def idComboInit(self):
         """Fill field combo box"""
+        layers = self.iface.legendInterface().layers()
         self.idLineComboBox.clear()
+        selected_line = self.lineComboBox.currentIndex()
+        self.lines_layer = layers[self.list_vect_ind[selected_line]]
         attr_ind = self.lines_layer.attributeList()
         attr_list = []
         for ind in attr_ind :
