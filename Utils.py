@@ -109,13 +109,14 @@ def rast_to_adv_graph(rastArray, res, nb_edge, max_slope, method, threshold, mas
     # Authorize path in the area of the beg and end point if there are not in the mask
     if maskArray != None :
         px_beg,py_beg = id_to_coord(beg_point)
-        if maskArray[px_beg,py_beg] == 0 :
+        px_end,py_end = id_to_coord(end_point)
+        if maskArray[px_beg,py_beg] == 0 or maskArray[px_end,py_end] == 0 :
+            maskArray = None
+        else:
             for i in range(px_beg-3,px_beg+4):
                 for j in range(py_beg-3,py_beg+4):
                     if 0<=i<=H and 0<=j<=W :
                         maskArray[i,j] = 4
-        px_end,py_end = id_to_coord(end_point)
-        if maskArray[px_end,py_end] == 0 :
             for i in range(px_end-3,px_end+4):
                 for j in range(py_end-3,py_end+4):
                     if 0<=i<=H and 0<=j<=W :
@@ -1003,10 +1004,10 @@ def getExtent(point_geom, npoint_geom, x_res, y_res, f_extent):
     dist = (dist/2) - mod + x_res
     facteur = 3
 
-    xmax = max(x1,x2) + x_res/2 + int(dist) + f_extent * facteur * x_res 
-    xmin = min(x1,x2) - x_res/2 - int(dist) - f_extent * facteur * x_res
-    ymax = max(y1,y2) + y_res/2 + int(dist) + f_extent * facteur * y_res
-    ymin = min(y1,y2) - y_res/2 - int(dist) - f_extent * facteur * y_res
+    xmax = max(x1,x2) + x_res/2 + int(dist)*2 + f_extent * facteur * x_res 
+    xmin = min(x1,x2) - x_res/2 - int(dist)*2 - f_extent * facteur * x_res
+    ymax = max(y1,y2) + y_res/2 + int(dist)*2 + f_extent * facteur * y_res
+    ymin = min(y1,y2) - y_res/2 - int(dist)*2 - f_extent * facteur * y_res
     extent = [xmin, xmax, ymin, ymax]
     return extent
 
@@ -1196,6 +1197,7 @@ def advanced_algo(point_layer,DEM_layer,tracks_layer,outpath,nb_edges,method,thr
             pprevious_point_it = None
             nature = point.attribute('nature')
             point_id = point.attribute('P_id')
+            cancel = 0
             # if point equal start or end, it will be keeped, 
             # otherwise the process will defined which points 
             # will be set aside, based on mean slope between points
@@ -1211,8 +1213,13 @@ def advanced_algo(point_layer,DEM_layer,tracks_layer,outpath,nb_edges,method,thr
                 point_alt = DEM_layer.dataProvider().identify(point_geom, QgsRaster.IdentifyFormatValue).results()[1]
                 next_point_alt = DEM_layer.dataProvider().identify(next_point_geom, QgsRaster.IdentifyFormatValue).results()[1]
                 length = round(math.sqrt(point_geom.sqrDist(next_point_geom)), 3)
-                coeff = math.fabs(point_alt-next_point_alt)/length
-                if coeff < 0.105 or nnature == 'end':
+                if length == 0 :
+                    coeff = 9999
+                else :
+                    coeff = math.fabs(point_alt-next_point_alt)/length
+                if coeff == 9999 and nnature == 'end':
+                    cancel = 1
+                elif coeff < 0.105 or nnature == 'end':
                     next_point_id = next_point.attribute('P_id')
                     list_points.append(next_point_id)
                     nature = nnature
@@ -1225,11 +1232,16 @@ def advanced_algo(point_layer,DEM_layer,tracks_layer,outpath,nb_edges,method,thr
                     nnext_point_geom = nnext_point.geometry().asPoint()
                     nnext_point_alt = DEM_layer.dataProvider().identify(nnext_point_geom, QgsRaster.IdentifyFormatValue).results()[1]
                     length = round(math.sqrt(point_geom.sqrDist(nnext_point_geom)), 3)
-                    ncoeff = math.fabs(point_alt-nnext_point_alt)/length
+                    if length == 0 :
+                        ncoeff = 9999
+                    else :
+                        ncoeff = math.fabs(point_alt-nnext_point_alt)/length
                     if ncoeff < coeff and next_point_alt > point_alt and next_point_alt > nnext_point_alt:
                         nnext_point_id = nnext_point.attribute('P_id')
                         list_points.append(nnext_point_id)
                         nature = nnnature
+                    elif ncoeff == 9999 and coeff == 9999 :
+                        cancel = 1
                     else :
                         next_point_id = next_point.attribute('P_id')
                         list_points.append(next_point_id)
@@ -1246,7 +1258,10 @@ def advanced_algo(point_layer,DEM_layer,tracks_layer,outpath,nb_edges,method,thr
                 point_alt = DEM_layer.dataProvider().identify(point_geom, QgsRaster.IdentifyFormatValue).results()[1]
                 next_point_alt = DEM_layer.dataProvider().identify(next_point_geom, QgsRaster.IdentifyFormatValue).results()[1]
                 length = round(math.sqrt(point_geom.sqrDist(next_point_geom)), 3)
-                coeff = math.fabs(point_alt-next_point_alt)/length
+                if length == 0 :
+                    coeff = 9999
+                else :
+                    coeff = math.fabs(point_alt-next_point_alt)/length
                 if coeff < 0.105 :
                     next_point_id = next_point.attribute('P_id')
                     list_points.append(next_point_id)
@@ -1264,7 +1279,10 @@ def advanced_algo(point_layer,DEM_layer,tracks_layer,outpath,nb_edges,method,thr
                     marge = math.fabs(point_alt-previous_point_alt)/math.fabs(point_alt-next_point_alt)
                     if previous_point_alt <= point_alt <= next_point_alt or previous_point_alt >= point_alt >= next_point_alt or marge < 0.15 : 
                         length = round(math.sqrt(next_point_geom.sqrDist(previous_point_geom)), 3)
-                        pcoeff = math.fabs(next_point_alt-previous_point_alt)/length
+                        if length == 0 :
+                            pcoeff = 9999
+                        else :
+                            pcoeff = math.fabs(next_point_alt-previous_point_alt)/length
                         if pcoeff < 0.105:
                             next_point_id = next_point.attribute('P_id')
                             del list_points[-1]
@@ -1282,7 +1300,10 @@ def advanced_algo(point_layer,DEM_layer,tracks_layer,outpath,nb_edges,method,thr
                             marge = math.fabs(point_alt-pprevious_point_alt)/math.fabs(point_alt-next_point_alt)
                             if pprevious_point_alt <= previous_point_alt <= next_point_alt or pprevious_point_alt >= previous_point_alt >= next_point_alt or marge < 0.15 : 
                                 length = round(math.sqrt(next_point_geom.sqrDist(pprevious_point_geom)), 3)
-                                ppcoeff = math.fabs(next_point_alt-pprevious_point_alt)/length
+                                if length == 0 :
+                                    ppcoeff = 9999
+                                else :
+                                    ppcoeff = math.fabs(next_point_alt-pprevious_point_alt)/length
                                 if ppcoeff < 0.105:
                                     next_point_id = next_point.attribute('P_id')
                                     del list_points[-1]
@@ -1317,7 +1338,10 @@ def advanced_algo(point_layer,DEM_layer,tracks_layer,outpath,nb_edges,method,thr
                                         nnext_point_geom = nnext_point.geometry().asPoint()
                                         nnext_point_alt = DEM_layer.dataProvider().identify(nnext_point_geom, QgsRaster.IdentifyFormatValue).results()[1]
                                         length = round(math.sqrt(point_geom.sqrDist(nnext_point_geom)), 3)
-                                        ncoeff = math.fabs(point_alt-nnext_point_alt)/length
+                                        if length == 0 :
+                                            ncoeff = 9999
+                                        else:
+                                            ncoeff = math.fabs(point_alt-nnext_point_alt)/length
                                         if ncoeff < best and next_point_alt > point_alt and next_point_alt > nnext_point_alt :
                                             nnext_point_id = nnext_point.attribute('P_id')
                                             list_points.append(nnext_point_id)
@@ -1376,7 +1400,10 @@ def advanced_algo(point_layer,DEM_layer,tracks_layer,outpath,nb_edges,method,thr
                                     nnext_point_geom = nnext_point.geometry().asPoint()
                                     nnext_point_alt = DEM_layer.dataProvider().identify(nnext_point_geom, QgsRaster.IdentifyFormatValue).results()[1]
                                     length = round(math.sqrt(point_geom.sqrDist(nnext_point_geom)), 3)
-                                    ncoeff = math.fabs(point_alt-nnext_point_alt)/length
+                                    if length == 0 :
+                                        ncoeff = 9999
+                                    else :
+                                        ncoeff = math.fabs(point_alt-nnext_point_alt)/length
                                     if ncoeff < best and next_point_alt > point_alt and next_point_alt > nnext_point_alt :
                                         nnext_point_id = nnext_point.attribute('P_id')
                                         list_points.append(nnext_point_id)
@@ -1413,7 +1440,10 @@ def advanced_algo(point_layer,DEM_layer,tracks_layer,outpath,nb_edges,method,thr
                                 nnext_point_geom = nnext_point.geometry().asPoint()
                                 nnext_point_alt = DEM_layer.dataProvider().identify(nnext_point_geom, QgsRaster.IdentifyFormatValue).results()[1]
                                 length = round(math.sqrt(point_geom.sqrDist(nnext_point_geom)), 3)
-                                ncoeff = math.fabs(point_alt-nnext_point_alt)/length
+                                if length == 0 :
+                                    ncoeff = 9999
+                                else :
+                                    ncoeff = math.fabs(point_alt-nnext_point_alt)/length
                                 if ncoeff < best :
                                     nnext_point_id = nnext_point.attribute('P_id')
                                     list_points.append(nnext_point_id)
@@ -1438,7 +1468,10 @@ def advanced_algo(point_layer,DEM_layer,tracks_layer,outpath,nb_edges,method,thr
                         nnext_point_geom = nnext_point.geometry().asPoint()
                         nnext_point_alt = DEM_layer.dataProvider().identify(nnext_point_geom, QgsRaster.IdentifyFormatValue).results()[1]
                         length = round(math.sqrt(point_geom.sqrDist(nnext_point_geom)), 3)
-                        ncoeff = math.fabs(point_alt-nnext_point_alt)/length
+                        if length == 0 :
+                            ncoeff = 9999
+                        else :
+                            ncoeff = math.fabs(point_alt-nnext_point_alt)/length
                         if ncoeff < coeff :
                             nnext_point_id = nnext_point.attribute('P_id')
                             list_points.append(nnext_point_id)
@@ -1461,7 +1494,10 @@ def advanced_algo(point_layer,DEM_layer,tracks_layer,outpath,nb_edges,method,thr
                     nnext_point_geom = nnext_point.geometry().asPoint()
                     nnext_point_alt = DEM_layer.dataProvider().identify(nnext_point_geom, QgsRaster.IdentifyFormatValue).results()[1]
                     length = round(math.sqrt(point_geom.sqrDist(nnext_point_geom)), 3)
-                    ncoeff = math.fabs(point_alt-nnext_point_alt)/length
+                    if length == 0 :
+                        ncoeff = 9999
+                    else :
+                        ncoeff = math.fabs(point_alt-nnext_point_alt)/length
                     if ncoeff < coeff and next_point_alt > point_alt and next_point_alt > nnext_point_alt :
                         nnext_point_id = nnext_point.attribute('P_id')
                         list_points.append(nnext_point_id)
@@ -1474,246 +1510,247 @@ def advanced_algo(point_layer,DEM_layer,tracks_layer,outpath,nb_edges,method,thr
                     next_point_id = next_point.attribute('P_id')
                     list_points.append(next_point_id)
                     nature = nnature
-        print line,list_points
-        # Loop over the points the algo kept 
-        for i,point_id in enumerate(list_points) :
-            # Select a point
-            expre = QgsExpression('L_id = %s AND P_id= %s'%(line, str(point_id)))
-            reque = QgsFeatureRequest(expre)
-            point_it = point_layer.getFeatures(reque)
-            point = next(point_it)
-            point_it = None
-            nature = point.attribute('nature')
-            if nature != 'end' :
-                next_point = None
-                point_id = point.attribute('P_id')
-                next_id = list_points[i+1]
-                # And select the next one
-                expre = QgsExpression('L_id = %s AND P_id= %s'%(line, str(next_id)))
+        if cancel == 0 :
+            print line,list_points
+            # Loop over the points the algo kept 
+            for i,point_id in enumerate(list_points) :
+                # Select a point
+                expre = QgsExpression('L_id = %s AND P_id= %s'%(line, str(point_id)))
                 reque = QgsFeatureRequest(expre)
-                next_point_it = point_layer.getFeatures(reque)
-                try :
-                    next_point = next(next_point_it)
-                    next_nature = next_point.attribute('nature')
-                    next_point_it = None
-                except StopIteration:
-                    pass
-                if next_point != None :
-                    f_extent = 2
-                    end_id = None
-                    print 'L_id = %s AND P_id= %s'%(line, str(next_id))
-                    # Iteration to find lcp, with a more and more wide clip of interest
-                    while end_id == None and f_extent < 5:
-                        f_extent+=1
-                        # Find lcp between the two points
-                        path, beg_list, beg_point, end_id, last_beg, w, scr = betweenPoint(point, next_point, point_layer, DEM_layer, tracks_layer, line, outpath, nb_edges, max_slope, method, threshold, x_res, y_res, f_extent, last_beg, Mask_layer)
+                point_it = point_layer.getFeatures(reque)
+                point = next(point_it)
+                point_it = None
+                nature = point.attribute('nature')
+                if nature != 'end' :
+                    next_point = None
+                    point_id = point.attribute('P_id')
+                    next_id = list_points[i+1]
+                    # And select the next one
+                    expre = QgsExpression('L_id = %s AND P_id= %s'%(line, str(next_id)))
+                    reque = QgsFeatureRequest(expre)
+                    next_point_it = point_layer.getFeatures(reque)
+                    try :
+                        next_point = next(next_point_it)
+                        next_nature = next_point.attribute('nature')
+                        next_point_it = None
+                    except StopIteration:
+                        pass
+                    if next_point != None :
+                        f_extent = 2
+                        end_id = None
+                        print 'L_id = %s AND P_id= %s'%(line, str(next_id))
+                        # Iteration to find lcp, with a more and more wide clip of interest
+                        while end_id == None and f_extent < 5:
+                            f_extent+=1
+                            # Find lcp between the two points
+                            path, beg_list, beg_point, end_id, last_beg, w, scr = betweenPoint(point, next_point, point_layer, DEM_layer, tracks_layer, line, outpath, nb_edges, max_slope, method, threshold, x_res, y_res, f_extent, last_beg, Mask_layer)
 
-                    if end_id != None :
-                        # Get lcp and convert it into coord
-                        leastCostPath, act_beg = get_adv_lcp(beg_list, path, end_id, method,threshold)
-                        coord_list = ids_to_coord(leastCostPath,scr)
-                        end_pt = leastCostPath[0]
-                        # Create the vector line
-                        create_ridge(tracks_layer,coord_list,line,next_id,next_nature,w)
-                        act_beg_pt2, act_beg_pt1 = act_beg.split('|')
-                        # Correction on previous line if the actual line created doesn't begin at the beg point but on the previous line
-                        if act_beg_pt2 != beg_point :
+                        if end_id != None :
+                            # Get lcp and convert it into coord
+                            leastCostPath, act_beg = get_adv_lcp(beg_list, path, end_id, method,threshold)
+                            coord_list = ids_to_coord(leastCostPath,scr)
+                            end_pt = leastCostPath[0]
+                            # Create the vector line
+                            create_ridge(tracks_layer,coord_list,line,next_id,next_nature,w)
+                            act_beg_pt2, act_beg_pt1 = act_beg.split('|')
+                            # Correction on previous line if the actual line created doesn't begin at the beg point but on the previous line
+                            if act_beg_pt2 != beg_point :
+                                expr = QgsExpression('L_id = %s AND P_id= %s'%(line, str(next_id)))
+                                req = QgsFeatureRequest(expr)
+                                last_line_it = tracks_layer.getFeatures(req)
+                                try :
+                                    last_line = next(last_line_it)
+                                    last_line_it = None
+                                    first_point = last_line.geometry().asPolyline()[-1]
+                                    pt_geom = QgsGeometry().fromPoint(first_point).buffer(1,4)
+                                    feat_prev_it = tracks_layer.getFeatures(QgsFeatureRequest().setFilterRect(pt_geom.boundingBox()))
+                                    rm_ids=[]
+                                    # Identify the path to correct
+                                    for f_poly in feat_prev_it:
+                                        if f_poly.attribute("L_id") == str(line) and f_poly.attribute("P_id") != str(next_id) :
+                                            f_poly_geom = f_poly.geometry().asPolyline()
+                                            for i,f_pt in enumerate(f_poly_geom):
+                                                if f_pt == first_point:
+                                                    rm_ids.append(f_poly.id())
+                                                    attr = f_poly.attributes()
+                                                    ind = i
+                                            new_feat = QgsFeature(tracks_layer.pendingFields())
+                                            new_line = f_poly_geom[ind:]
+                                            new_geom = QgsGeometry().fromPolyline(new_line)
+                                            new_feat.setGeometry(new_geom)
+                                            new_feat.setAttributes(attr)
+                                            tracks_layer.startEditing()
+                                            tracks_layer.dataProvider().addFeatures([new_feat])
+                                            tracks_layer.commitChanges()
+                                            if f_poly.attribute("P_id") != point_id:
+                                                diff = int(next_id) - int(f_poly.attribute('P_id'))
+                                                while diff !=1 :
+                                                    diff = diff -1
+                                                    searched_pid = int(f_poly.attribute('P_id')) + diff
+                                                    expr = QgsExpression('L_id = %s AND P_id= %s'%(line, str(searched_pid)))
+                                                    req = QgsFeatureRequest(expr)
+                                                    searched_line_it = None
+                                                    searched_line_it = tracks_layer.getFeatures(req)
+                                                    try:
+                                                        searched_line = next(searched_line_it)
+                                                        rm_ids.append(searched_line.id())
+                                                    except StopIteration:
+                                                        pass
+                                        elif f_poly.attribute("L_id") != str(line) :
+                                            expr = QgsExpression('L_id = %s'%(f_poly.attribute("L_id")))
+                                            req = QgsFeatureRequest(expr).setFilterRect(point.geometry().buffer(1,4).boundingBox())
+                                            point_int_it = None
+                                            point_int_it = point_layer.getFeatures(req)
+                                            point_int = next(point_int_it)
+                                            if point_int.attribute("nature") == "end" :
+                                                if f_poly.attribute("L_id") in line_to_change.keys() :
+                                                    line_to_change[f_poly.attribute("L_id")].append([line,next_id])
+                                                else :
+                                                    line_to_change[f_poly.attribute("L_id")]=[[line,next_id]]
+                                    tracks_layer.startEditing()
+                                    tracks_layer.dataProvider().deleteFeatures(rm_ids)
+                                    tracks_layer.commitChanges()
+                                except StopIteration:
+                                    pass
+
                             expr = QgsExpression('L_id = %s AND P_id= %s'%(line, str(next_id)))
                             req = QgsFeatureRequest(expr)
                             last_line_it = tracks_layer.getFeatures(req)
                             try :
                                 last_line = next(last_line_it)
-                                last_line_it = None
-                                first_point = last_line.geometry().asPolyline()[-1]
-                                pt_geom = QgsGeometry().fromPoint(first_point).buffer(1,4)
-                                feat_prev_it = tracks_layer.getFeatures(QgsFeatureRequest().setFilterRect(pt_geom.boundingBox()))
-                                rm_ids=[]
-                                # Identify the path to correct
-                                for f_poly in feat_prev_it:
-                                    if f_poly.attribute("L_id") == str(line) and f_poly.attribute("P_id") != str(next_id) :
-                                        f_poly_geom = f_poly.geometry().asPolyline()
-                                        for i,f_pt in enumerate(f_poly_geom):
-                                            if f_pt == first_point:
-                                                rm_ids.append(f_poly.id())
-                                                attr = f_poly.attributes()
-                                                ind = i
-                                        new_feat = QgsFeature(tracks_layer.pendingFields())
-                                        new_line = f_poly_geom[ind:]
-                                        new_geom = QgsGeometry().fromPolyline(new_line)
-                                        new_feat.setGeometry(new_geom)
-                                        new_feat.setAttributes(attr)
-                                        tracks_layer.startEditing()
-                                        tracks_layer.dataProvider().addFeatures([new_feat])
-                                        tracks_layer.commitChanges()
-                                        if f_poly.attribute("P_id") != point_id:
-                                            diff = int(next_id) - int(f_poly.attribute('P_id'))
-                                            while diff !=1 :
-                                                diff = diff -1
-                                                searched_pid = int(f_poly.attribute('P_id')) + diff
-                                                expr = QgsExpression('L_id = %s AND P_id= %s'%(line, str(searched_pid)))
-                                                req = QgsFeatureRequest(expr)
-                                                searched_line_it = None
-                                                searched_line_it = tracks_layer.getFeatures(req)
-                                                try:
-                                                    searched_line = next(searched_line_it)
-                                                    rm_ids.append(searched_line.id())
-                                                except StopIteration:
-                                                    pass
-                                    elif f_poly.attribute("L_id") != str(line) :
-                                        expr = QgsExpression('L_id = %s'%(f_poly.attribute("L_id")))
-                                        req = QgsFeatureRequest(expr).setFilterRect(point.geometry().buffer(1,4).boundingBox())
-                                        point_int_it = None
-                                        point_int_it = point_layer.getFeatures(req)
-                                        point_int = next(point_int_it)
-                                        if point_int.attribute("nature") == "end" :
-                                            if f_poly.attribute("L_id") in line_to_change.keys() :
-                                                line_to_change[f_poly.attribute("L_id")].append([line,next_id])
-                                            else :
-                                                line_to_change[f_poly.attribute("L_id")]=[[line,next_id]]
-                                tracks_layer.startEditing()
-                                tracks_layer.dataProvider().deleteFeatures(rm_ids)
-                                tracks_layer.commitChanges()
-                            except StopIteration:
-                                pass
+                                last_geom = last_line.geometry()
+                                last_geom_p = last_geom.asPolyline()
+                                last_geom_e = [last_geom.asPolyline()[0],last_geom.asPolyline()[-1]]
+                                feats_line = tracks_layer.getFeatures(QgsFeatureRequest().setFilterRect(last_geom.boundingBox()))
+                                cros = False
+                                commun = False
+                                list_commun = []
+                                list_cross = []
+                                # Identify if the created line crosses another line
+                                for feat_line in feats_line:
+                                    if feat_line.id() != last_line.id():
+                                        if feat_line.geometry().crosses(last_geom):
+                                            print "oh it crosses"
+                                            cros = True
+                                            commun = False
+                                            geom_cros = feat_line.geometry().asPolyline()
+                                            geom_cros_e = [geom_cros[0],geom_cros[-1]]
+                                        elif cros == False :
+                                            for i, pt in enumerate(last_geom_p[1:-1]) :
+                                                ft_line_geom = feat_line.geometry().asPolyline()
+                                                if pt in ft_line_geom and (i+2) not in list_commun :
+                                                    commun = True
+                                                    print 'got one'
+                                                    geom_cros = feat_line.geometry().asPolyline()
+                                                    geom_cros_e = [geom_cros[0],geom_cros[-1]]
+                                                    # i+2 => +1 for the enumerate function and +1 for following geom select
+                                                    list_commun.append(i+2)
+                                                    list_cross.append(geom_cros_e)
 
-                        expr = QgsExpression('L_id = %s AND P_id= %s'%(line, str(next_id)))
-                        req = QgsFeatureRequest(expr)
-                        last_line_it = tracks_layer.getFeatures(req)
-                        try :
-                            last_line = next(last_line_it)
-                            last_geom = last_line.geometry()
-                            last_geom_p = last_geom.asPolyline()
-                            last_geom_e = [last_geom.asPolyline()[0],last_geom.asPolyline()[-1]]
-                            feats_line = tracks_layer.getFeatures(QgsFeatureRequest().setFilterRect(last_geom.boundingBox()))
-                            cros = False
-                            commun = False
-                            list_commun = []
-                            list_cross = []
-                            # Identify if the created line crosses another line
-                            for feat_line in feats_line:
-                                if feat_line.id() != last_line.id():
-                                    if feat_line.geometry().crosses(last_geom):
-                                        print "oh it crosses"
-                                        cros = True
-                                        commun = False
-                                        geom_cros = feat_line.geometry().asPolyline()
-                                        geom_cros_e = [geom_cros[0],geom_cros[-1]]
-                                    elif cros == False :
-                                        for i, pt in enumerate(last_geom_p[1:-1]) :
-                                            ft_line_geom = feat_line.geometry().asPolyline()
-                                            if pt in ft_line_geom and (i+2) not in list_commun :
-                                                commun = True
-                                                print 'got one'
-                                                geom_cros = feat_line.geometry().asPolyline()
-                                                geom_cros_e = [geom_cros[0],geom_cros[-1]]
-                                                # i+2 => +1 for the enumerate function and +1 for following geom select
-                                                list_commun.append(i+2)
-                                                list_cross.append(geom_cros_e)
-
-                            if cros == True :
-                                attr_last_line = last_line.attributes()
-                                temp_layer = outputFormat(crs,'tmp_Tracks')
-                                inter_count+=1
-                                temp_path = '%s\\tmp\\tmp%s_layer.shp' % (os.path.dirname(outpath), str(inter_count))
-                                print temp_path
-                                QgsVectorFileWriter.writeAsVectorFormat(temp_layer, temp_path, "utf-8", None, "ESRI Shapefile")
-                                temp_layer = QgsVectorLayer(temp_path,'temp_layer','ogr')
-                                temp_layer.startEditing()
-                                temp_layer.dataProvider().addFeatures([last_line])
-                                temp_layer.commitChanges()
-                                print "let's cut"
-                                cut_line = processing.runalg('qgis:splitlineswithlines',temp_layer,tracks_layer,None)
-                                cut_line = QgsVectorLayer(cut_line['OUTPUT'],'cut',"ogr")
-                                print 'is it good ?'
-                                for lin in cut_line.getFeatures() :
-                                    geom_lin = lin.geometry().asPolyline()
-                                    if geom_lin[0] == last_geom_p[0]  :
-                                        lin.setAttributes(attr_last_line)
-                                        tracks_layer.startEditing()
-                                        tracks_layer.dataProvider().addFeatures([lin])
-                                        tracks_layer.commitChanges()
-                                        print 'ok'
-                                tracks_layer.startEditing()
-                                tracks_layer.deleteFeatures([last_line.id()])
-                                tracks_layer.commitChanges()
-                                temp_layer = None
-                                cut_line = None
-
-                            if commun == True :
-                                attr_last_line = last_line.attributes()
-                                if list_commun[0] == list_commun[-1] :
-                                    geom_lin = last_geom_p[0:list_commun[0]]
-                                    if geom_lin[0] not in geom_cros_e and geom_lin[-1] not in geom_cros_e and (geom_lin[0] in last_geom_e or geom_lin[-1] in last_geom_e)  :
-                                        lin = QgsFeature(tracks_layer.pendingFields())
-                                        lin.setAttributes(attr_last_line)
-                                        lin.setGeometry(QgsGeometry().fromPolyline(geom_lin))
-                                        tracks_layer.startEditing()
-                                        tracks_layer.dataProvider().addFeatures([lin])
-                                        tracks_layer.commitChanges()
-                                    geom_lin = last_geom_p[list_commun[0]:]
-                                    if geom_lin[0] not in geom_cros_e and geom_lin[-1] not in geom_cros_e and (geom_lin[0] in last_geom_e or geom_lin[-1] in last_geom_e)  :
-                                        lin = QgsFeature(tracks_layer.pendingFields())
-                                        lin.setAttributes(attr_last_line)
-                                        lin.setGeometry(QgsGeometry().fromPolyline(geom_lin))
-                                        tracks_layer.startEditing()
-                                        tracks_layer.dataProvider().addFeatures([lin])
-                                        tracks_layer.commitChanges()
-                                else :
-                                    pt_index = min(list_commun)
-                                    geom_lin = last_geom_p[0:pt_index]
-                                    if geom_lin[0] not in geom_cros_e and geom_lin[-1] not in geom_cros_e and (geom_lin[0] in last_geom_e or geom_lin[-1] in last_geom_e)  :
-                                        lin = QgsFeature(tracks_layer.pendingFields())
-                                        lin.setAttributes(attr_last_line)
-                                        lin.setGeometry(QgsGeometry().fromPolyline(geom_lin))
-                                        tracks_layer.startEditing()
-                                        tracks_layer.dataProvider().addFeatures([lin])
-                                        tracks_layer.commitChanges()
+                                if cros == True :
+                                    attr_last_line = last_line.attributes()
+                                    temp_layer = outputFormat(crs,'tmp_Tracks')
+                                    inter_count+=1
+                                    temp_path = '%s\\tmp\\tmp%s_layer.shp' % (os.path.dirname(outpath), str(inter_count))
+                                    print temp_path
+                                    QgsVectorFileWriter.writeAsVectorFormat(temp_layer, temp_path, "utf-8", None, "ESRI Shapefile")
+                                    temp_layer = QgsVectorLayer(temp_path,'temp_layer','ogr')
+                                    temp_layer.startEditing()
+                                    temp_layer.dataProvider().addFeatures([last_line])
+                                    temp_layer.commitChanges()
+                                    print "let's cut"
+                                    cut_line = processing.runalg('qgis:splitlineswithlines',temp_layer,tracks_layer,None)
+                                    cut_line = QgsVectorLayer(cut_line['OUTPUT'],'cut',"ogr")
+                                    print 'is it good ?'
+                                    for lin in cut_line.getFeatures() :
+                                        geom_lin = lin.geometry().asPolyline()
+                                        if geom_lin[0] == last_geom_p[0]  :
+                                            lin.setAttributes(attr_last_line)
+                                            tracks_layer.startEditing()
+                                            tracks_layer.dataProvider().addFeatures([lin])
+                                            tracks_layer.commitChanges()
+                                            print 'ok'
                                     tracks_layer.startEditing()
                                     tracks_layer.deleteFeatures([last_line.id()])
                                     tracks_layer.commitChanges()
-                                    # for i, pt_index in enumerate(list_commun):
-                                    #     elif i == 0 :
-                                    #         geom_lin = last_geom_p[0:pt_index]
-                                    #         if geom_lin[0] not in geom_cros_e and geom_lin[-1] not in geom_cros_e and (geom_lin[0] in last_geom_e or geom_lin[-1] in last_geom_e)  :
-                                    #             lin = QgsFeature(tracks_layer.pendingFields())
-                                    #             lin.setAttributes(attr_last_line)
-                                    #             lin.setGeometry(QgsGeometry().fromPolyline(geom_lin))
-                                    #             tracks_layer.startEditing()
-                                    #             tracks_layer.dataProvider().addFeatures([lin])
-                                    #             tracks_layer.commitChanges()
-                                    #     elif i == len(list_commun)-1 :
-                                    #         geom_lin = last_geom_p[list_commun[i-1]:pt_index]
-                                    #         if geom_lin[0] not in geom_cros_e and geom_lin[-1] not in geom_cros_e and (geom_lin[0] in last_geom_e or geom_lin[-1] in last_geom_e)  :
-                                    #             lin = QgsFeature(tracks_layer.pendingFields())
-                                    #             lin.setAttributes(attr_last_line)
-                                    #             lin.setGeometry(QgsGeometry().fromPolyline(geom_lin))
-                                    #             tracks_layer.startEditing()
-                                    #             tracks_layer.dataProvider().addFeatures([lin])
-                                    #             tracks_layer.commitChanges()
-                                    #         geom_lin = last_geom_p[pt_index:-1]
-                                    #         if geom_lin[0] not in geom_cros_e and geom_lin[-1] not in geom_cros_e and (geom_lin[0] in last_geom_e or geom_lin[-1] in last_geom_e)  :
-                                    #             lin = QgsFeature(tracks_layer.pendingFields())
-                                    #             lin.setAttributes(attr_last_line)
-                                    #             lin.setGeometry(QgsGeometry().fromPolyline(geom_lin))
-                                    #             tracks_layer.startEditing()
-                                    #             tracks_layer.dataProvider().addFeatures([lin])
-                                    #             tracks_layer.commitChanges()
-                                    #     else :
-                                    #         geom_lin = last_geom_p[list_commun[i-1]:pt_index]
-                                    #         if geom_lin[0] not in geom_cros_e and geom_lin[-1] not in geom_cros_e and (geom_lin[0] in last_geom_e or geom_lin[-1] in last_geom_e)  :
-                                    #             lin = QgsFeature(tracks_layer.pendingFields())
-                                    #             lin.setAttributes(attr_last_line)
-                                    #             lin.setGeometry(QgsGeometry().fromPolyline(geom_lin))
-                                    #             tracks_layer.startEditing()
-                                    #             tracks_layer.dataProvider().addFeatures([lin])
-                                    #             tracks_layer.commitChanges()
-                                    #     tracks_layer.startEditing()
-                                    #     tracks_layer.deleteFeatures([last_line.id()])
-                                    #     tracks_layer.commitChanges()
-                                temp_layer = None
-                                cut_line = None
-                        except StopIteration:
-                            pass
+                                    temp_layer = None
+                                    cut_line = None
+
+                                if commun == True :
+                                    attr_last_line = last_line.attributes()
+                                    if list_commun[0] == list_commun[-1] :
+                                        geom_lin = last_geom_p[0:list_commun[0]]
+                                        if geom_lin[0] not in geom_cros_e and geom_lin[-1] not in geom_cros_e and (geom_lin[0] in last_geom_e or geom_lin[-1] in last_geom_e)  :
+                                            lin = QgsFeature(tracks_layer.pendingFields())
+                                            lin.setAttributes(attr_last_line)
+                                            lin.setGeometry(QgsGeometry().fromPolyline(geom_lin))
+                                            tracks_layer.startEditing()
+                                            tracks_layer.dataProvider().addFeatures([lin])
+                                            tracks_layer.commitChanges()
+                                        geom_lin = last_geom_p[list_commun[0]:]
+                                        if geom_lin[0] not in geom_cros_e and geom_lin[-1] not in geom_cros_e and (geom_lin[0] in last_geom_e or geom_lin[-1] in last_geom_e)  :
+                                            lin = QgsFeature(tracks_layer.pendingFields())
+                                            lin.setAttributes(attr_last_line)
+                                            lin.setGeometry(QgsGeometry().fromPolyline(geom_lin))
+                                            tracks_layer.startEditing()
+                                            tracks_layer.dataProvider().addFeatures([lin])
+                                            tracks_layer.commitChanges()
+                                    else :
+                                        pt_index = min(list_commun)
+                                        geom_lin = last_geom_p[0:pt_index]
+                                        if geom_lin[0] not in geom_cros_e and geom_lin[-1] not in geom_cros_e and (geom_lin[0] in last_geom_e or geom_lin[-1] in last_geom_e)  :
+                                            lin = QgsFeature(tracks_layer.pendingFields())
+                                            lin.setAttributes(attr_last_line)
+                                            lin.setGeometry(QgsGeometry().fromPolyline(geom_lin))
+                                            tracks_layer.startEditing()
+                                            tracks_layer.dataProvider().addFeatures([lin])
+                                            tracks_layer.commitChanges()
+                                        tracks_layer.startEditing()
+                                        tracks_layer.deleteFeatures([last_line.id()])
+                                        tracks_layer.commitChanges()
+                                        # for i, pt_index in enumerate(list_commun):
+                                        #     elif i == 0 :
+                                        #         geom_lin = last_geom_p[0:pt_index]
+                                        #         if geom_lin[0] not in geom_cros_e and geom_lin[-1] not in geom_cros_e and (geom_lin[0] in last_geom_e or geom_lin[-1] in last_geom_e)  :
+                                        #             lin = QgsFeature(tracks_layer.pendingFields())
+                                        #             lin.setAttributes(attr_last_line)
+                                        #             lin.setGeometry(QgsGeometry().fromPolyline(geom_lin))
+                                        #             tracks_layer.startEditing()
+                                        #             tracks_layer.dataProvider().addFeatures([lin])
+                                        #             tracks_layer.commitChanges()
+                                        #     elif i == len(list_commun)-1 :
+                                        #         geom_lin = last_geom_p[list_commun[i-1]:pt_index]
+                                        #         if geom_lin[0] not in geom_cros_e and geom_lin[-1] not in geom_cros_e and (geom_lin[0] in last_geom_e or geom_lin[-1] in last_geom_e)  :
+                                        #             lin = QgsFeature(tracks_layer.pendingFields())
+                                        #             lin.setAttributes(attr_last_line)
+                                        #             lin.setGeometry(QgsGeometry().fromPolyline(geom_lin))
+                                        #             tracks_layer.startEditing()
+                                        #             tracks_layer.dataProvider().addFeatures([lin])
+                                        #             tracks_layer.commitChanges()
+                                        #         geom_lin = last_geom_p[pt_index:-1]
+                                        #         if geom_lin[0] not in geom_cros_e and geom_lin[-1] not in geom_cros_e and (geom_lin[0] in last_geom_e or geom_lin[-1] in last_geom_e)  :
+                                        #             lin = QgsFeature(tracks_layer.pendingFields())
+                                        #             lin.setAttributes(attr_last_line)
+                                        #             lin.setGeometry(QgsGeometry().fromPolyline(geom_lin))
+                                        #             tracks_layer.startEditing()
+                                        #             tracks_layer.dataProvider().addFeatures([lin])
+                                        #             tracks_layer.commitChanges()
+                                        #     else :
+                                        #         geom_lin = last_geom_p[list_commun[i-1]:pt_index]
+                                        #         if geom_lin[0] not in geom_cros_e and geom_lin[-1] not in geom_cros_e and (geom_lin[0] in last_geom_e or geom_lin[-1] in last_geom_e)  :
+                                        #             lin = QgsFeature(tracks_layer.pendingFields())
+                                        #             lin.setAttributes(attr_last_line)
+                                        #             lin.setGeometry(QgsGeometry().fromPolyline(geom_lin))
+                                        #             tracks_layer.startEditing()
+                                        #             tracks_layer.dataProvider().addFeatures([lin])
+                                        #             tracks_layer.commitChanges()
+                                        #     tracks_layer.startEditing()
+                                        #     tracks_layer.deleteFeatures([last_line.id()])
+                                        #     tracks_layer.commitChanges()
+                                    temp_layer = None
+                                    cut_line = None
+                            except StopIteration:
+                                pass
     rm_ids=[]
     print line_to_change
     # Execute the changes

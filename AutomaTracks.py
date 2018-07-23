@@ -347,9 +347,9 @@ class AutomaTracks:
         try:
             edges = self.dockwidget.EdgesNumGroup.checkedButton().text()
             method = self.dockwidget.DirectionGroup.checkedButton().text()
-            if method == 'degree' :
+            if method[0] == 'd' :
                 method = 'a'
-            elif method == 'radius of curvature' :
+            elif method[0] == 'r' :
                 method = 'r'
             threshold = self.dockwidget.MaxDirSpinBox.value()
             max_slope = self.dockwidget.MaxSlopeSpinBox.value()
