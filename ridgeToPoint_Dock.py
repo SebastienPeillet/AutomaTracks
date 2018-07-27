@@ -478,10 +478,16 @@ class ridgeToPointDock(QtGui.QDockWidget, FORM_CLASS):
                             pt2_elev = self.dem_layer.dataProvider().identify(pt_near.geometry().asPoint(),QgsRaster.IdentifyFormatValue)
                             already_done.append(pt_id)
                             already_done.append(pt_near_id)
-                            if pt1_elev < pt2_elev :
-                                change = pt_Tid
+                            if pt.attribute('T_id')[-1] == 'd' and pt_near.attribute('T_id') == 'd' :
+                                if pt1_elev > pt2_elev :
+                                    change = pt_Tid
+                                else :
+                                    change = pt_near_Tid
                             else :
-                                change = pt_near_Tid
+                                if pt1_elev < pt2_elev :
+                                    change = pt_Tid
+                                else :
+                                    change = pt_near_Tid
                             geom_to_change.append(change)
         # print geom_to_change
         for change in geom_to_change :
