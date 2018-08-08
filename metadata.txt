@@ -1,4 +1,4 @@
-# This file contains metadata for your plugin. Since 
+﻿# This file contains metadata for your plugin. Since 
 # version 2.0 of QGIS this is the proper way to supply 
 # information about a plugin. The old method of 
 # embedding metadata in __init__.py will 
@@ -9,12 +9,12 @@
 [general]
 name=AutomaTracks
 qgisMinimumVersion=2.14
-description=Automatic tracks with constraint with path point
+description=Automatic tracks based on least cost path algorithm
 version=1.0
 author=Peillet Sébastien
 email=peillet.seb@gmail.com
 
-about=Automatic tracks with constraint with path point.
+about=Automatic tracks based on least cost path algorithm. This method fits to road planification in french guyana forest. It needs ridge polyline, that will be converted into path points. The algorithm makes least cost path based on earthwork (m3) that will be needed to build the road between the points. For more informations, DOI: 10.13140/RG.2.2.23880.42243
 
 tracker=https://github.com/SebastienPeillet/AutomaTracks/issues
 repository=https://github.com/SebastienPeillet/AutomaTracks
