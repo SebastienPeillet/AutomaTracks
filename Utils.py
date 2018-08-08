@@ -1173,6 +1173,9 @@ def advanced_algo(point_layer,DEM_layer,tracks_layer,outpath,nb_edges,method,thr
     x_res = DEM_layer.rasterUnitsPerPixelX()
     y_res = DEM_layer.rasterUnitsPerPixelY()
 
+    #point selection
+    base_coeff = threshold*0.875
+
     # list line
     lines_list=[]
     for point in point_layer.getFeatures() :
@@ -1219,7 +1222,7 @@ def advanced_algo(point_layer,DEM_layer,tracks_layer,outpath,nb_edges,method,thr
                     coeff = math.fabs(point_alt-next_point_alt)/length
                 if coeff == 9999 and nnature == 'end':
                     cancel = 1
-                elif coeff < 0.105 or nnature == 'end':
+                elif coeff < base_coeff or nnature == 'end':
                     next_point_id = next_point.attribute('P_id')
                     list_points.append(next_point_id)
                     nature = nnature
@@ -1262,7 +1265,7 @@ def advanced_algo(point_layer,DEM_layer,tracks_layer,outpath,nb_edges,method,thr
                     coeff = 9999
                 else :
                     coeff = math.fabs(point_alt-next_point_alt)/length
-                if coeff < 0.105 :
+                if coeff < base_coeff :
                     next_point_id = next_point.attribute('P_id')
                     list_points.append(next_point_id)
                     nature = nnature
@@ -1283,7 +1286,7 @@ def advanced_algo(point_layer,DEM_layer,tracks_layer,outpath,nb_edges,method,thr
                             pcoeff = 9999
                         else :
                             pcoeff = math.fabs(next_point_alt-previous_point_alt)/length
-                        if pcoeff < 0.105:
+                        if pcoeff < base_coeff:
                             next_point_id = next_point.attribute('P_id')
                             del list_points[-1]
                             list_points.append(next_point_id)
@@ -1304,7 +1307,7 @@ def advanced_algo(point_layer,DEM_layer,tracks_layer,outpath,nb_edges,method,thr
                                     ppcoeff = 9999
                                 else :
                                     ppcoeff = math.fabs(next_point_alt-pprevious_point_alt)/length
-                                if ppcoeff < 0.105:
+                                if ppcoeff < base_coeff:
                                     next_point_id = next_point.attribute('P_id')
                                     del list_points[-1]
                                     del list_points[-1]
