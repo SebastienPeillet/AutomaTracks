@@ -925,7 +925,7 @@ def getExtent(point_geom, npoint_geom, x_res, y_res, f_extent):
 def getClip(DEM_layer, outpath, extent, x_res, y_res, name):
     """Create clip with the extent, previously defined"""
 
-    name_clip = '%s\\tmp' % os.path.dirname(outpath)
+    name_clip = os.path.join(os.path.dirname(outpath), r'tmp')
     name_clip += name
     extent = str(str(extent[0])+','+str(extent[1])+','+str(extent[2])+','+str(extent[3]))
     processing.runalg('gdalogr:cliprasterbyextent', {'INPUT': DEM_layer.source(), 'PROJWIN': extent, 'OUTPUT': name_clip})
@@ -1578,7 +1578,7 @@ def advanced_algo(point_layer, DEM_layer, tracks_layer, outpath, nb_edges, metho
                                     attr_last_line = last_line.attributes()
                                     temp_layer = outputFormat(crs, 'tmp_Tracks')
                                     inter_count += 1
-                                    temp_path = '%s\\tmp\\tmp%s_layer.shp' % (os.path.dirname(outpath), str(inter_count))
+                                    temp_path = os.path.join(os.path.dirname(outpath), r'tmp', 'tmp%s_layer.shp' % str(inter_count))
                                     print 'temp_path', temp_path
                                     QgsVectorFileWriter.writeAsVectorFormat(temp_layer, temp_path, "utf-8", None, "ESRI Shapefile")
                                     temp_layer = QgsVectorLayer(temp_path, 'temp_layer', 'ogr')
